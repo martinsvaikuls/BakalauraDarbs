@@ -127,88 +127,77 @@ class Solution:
         self.drivingHourCost = self.drivingHundredKMCost*60/100
 
     
-    def calculateMonetaryCostForTechnician(self):
-        changedRoute = self.changedRoute
-
-        for tech_id, cr in changedRoute:
-            if cr:
-                cost = 0
-                cost += self.pathCost[tech_id]
-                cost += self.timeCost[tech_id]
-                cost += self.weatherCost[tech_id]
-                
-                self.monetaryCost[tech_id] = cost
-
-        
-    def calculatePathCost(self, distances):
+    def updateCosts_Income(self, distances, tasks):
         routes = self.routes
         changedRoute = self.changedRoute
 
-        for tech_id, cr in changedRoute:
+        totalPathCost = 0.0
+        totalTimeCost = 0.0
+        totalWeatherCost = 0.0
+        totalIncome = 0.0
+
+        for tech_id, cr in changedRoute.items():
             if cr:
                 current_tech_position = Route_Node(NodeType.TECH, tech_id)
-                cost = 0.0
-                for technician_id, route in routes:
-                    for node in route:
-                        next_route_position = node
-                        cost += distances.get_distance(current_tech_position, next_route_position)
-                        current_tech_position = next_route_position
-                self.pathCost[tech_id] = cost * self.drivingHourCost
+                cost_monetary = 0.0
 
-
-    def calculateTimeCost(self, tasks):
-        routes = self.routes
-        changedRoute = self.changedRoute
-
-        for tech_id, cr in changedRoute:
-            if cr:
                 duration_work = 0.0
                 cost_drive = 0.0
-                for technician_id, route in routes:
-                    for node in route:
+
+                weatherCost = 0.0
+
+
+                incomeTech = 0.0
+
+                route = routes[tech_id]
+                ##for technician_id, route in routes.items():
+                for node in route:
+                    next_route_position = node
+                    cost_drive += distances.get_distance(current_tech_position, next_route_position)
+                    current_tech_position = next_route_position
+
+                    ### weather
+                    ######
+
+                    if node.node_type == NodeType.TASK:
                         duration_work += tasks[node.id].duration
+                        incomeTech += tasks[node.id].income
+
+
+                self.pathCost[tech_id] = cost_drive * self.drivingHourCost                  
 
                 cost_work = duration_work * self.workHourCost
                 cost_drive = (self.pathCost[tech_id] / self.drivingHourCost) * self.workHourCost
                 self.timeCost[tech_id] = cost_drive + cost_work
 
+                ######### WEATHER
 
-    def calculateWeatherCost(self):
-        pass
+                self.weatherCost[tech_id] = weatherCost
+                ################
 
 
-    def calculateIncome(self, tasks):
-        routes = self.routes
-        changedRoute = self.changedRoute
-        for tech_id, cr in changedRoute:
-            if cr:
-                incomeTech = 0.0
-   
-                for technician_id, route in routes:
-                    for node in route:
-                        incomeTech += tasks[node.id].income
+                cost_monetary += self.pathCost[tech_id]
+                cost_monetary += self.timeCost[tech_id]
+                cost_monetary += self.weatherCost[tech_id]
+                
+                self.monetaryCost[tech_id] = cost_monetary
 
                 self.income[tech_id] = incomeTech
-                
 
-    def updateTotals(self):
-        pathCost = 0
-        timeCost = 0
-        weatherCost = 0
-        income = 0
+                self.changedRoute[tech_id] = False
 
-        changedRoute = self.changedRoute 
-        for tech_id, cr in changedRoute:
-            pathCost += self.pathCost[tech_id]
-            timeCost += self.timeCost[tech_id]
-            weatherCost += self.weatherCost[tech_id]
-            income += self.income[tech_id]
+            
+            totalPathCost += self.pathCost[tech_id]
+            totalTimeCost += self.timeCost[tech_id]
+            totalWeatherCost += self.weatherCost[tech_id]
+            totalIncome += self.income[tech_id]
+        
+        self.totalMonetaryCost = totalPathCost + totalTimeCost + totalWeatherCost
+        self.totalPathCost = totalPathCost
+        self.totalTimeCost = totalTimeCost
+        self.totalWeatherCost = totalWeatherCost
+        self.totalIncome = totalIncome
 
-        self.totalMonetaryCost = pathCost + timeCost + weatherCost
-        self.totalPathCost = pathCost
-        self.totalTimeCost = timeCost
-        self.totalWeatherCost = weatherCost
-        self.totalIncome = income
 
 
     def __str__(self, row):
@@ -219,27 +208,73 @@ class Solution:
 
 class Operators: 
     def __init__(self, row):
-        self.destroy = Destroy_Operator()
-        self.repair = Repair_Operator()
+        self.destroy_ops = Destroy_Operator()
+        self.repair_ops = Repair_Operator()
         
         self.chosen_destroy = 0
         self.chosen_repair = 0
 
-        self.weights_destroy = []
-        self.weights_repair = []
+        self.weights_destroy = [1.0] * 6
+        self.weights_repair = [1.0] * 3
 
         self.score = 0
+        self.reaction = 0.1
                
-    def roulette():
-        pass
-    def destroy():
-        pass
-    def repair():
-        pass
-    def renewWeights():
-        pass
-    def updateScore():
-        pass         
+    def roulette(self):
+        total_destroy = sum(self.weights_destroy)
+        total_repair = sum(self.weights_repair)
+
+        pick_destroy = random.uniform(0, total_destroy)
+        pick_repair = random.uniform(0, total_repair)
+
+
+        current = 0.0
+        for operator, weight in enumerate(self.weights_destroy):
+            current += weight
+            if current >= pick_destroy:
+                self.chosen_destroy = operator
+                break
+
+        current = 0.0
+        for operator, weight in enumerate(self.weights_repair):
+            current += weight
+            if current >= pick_repair:
+                self.chosen_repair = operator
+                break
+    
+
+    def destroy(self, solution):
+        match self.chosen_destroy:
+            case 0:
+                return self.destroy_ops.random(solution)
+            case 1:
+                return self.destroy_ops.route(solution)
+            case 2:
+                return self.destroy_ops.critical(solution)
+            case 3:
+                return self.destroy_ops.shaw(solution)
+            case 4:
+                return self.destroy_ops.skill(solution)
+            case 5:
+                return self.destroy_ops.type(solution)
+            
+
+    def repair(self, solution):
+        match self.chosen_repair:
+            case 0:
+                return self.repair_ops.greedy(solution)
+            case 1:
+                return self.repair_ops.regret(solution)
+            case 2:
+                return self.repair_ops.random(solution)
+
+
+    def renew_weights(self):
+        self.weights_destroy[self.chosen_destroy] = (1.0 - self.reaction) * self.weights_destroy[self.chosen_destroy] + self.reaction * self.score
+        self.weights_repair[self.chosen_repair] = (1.0 - self.reaction) * self.weights_repair[self.chosen_repair] + self.reaction * self.score
+        
+    def updateScore(self,new_score):
+        self.score = new_score
 
     def __str__(self, row):
         pass
@@ -248,18 +283,29 @@ class Destroy_Operator:
     def __init__(self, row):
         pass
     
-    def random():
-        pass
-    def route():
-        pass
-    def critical():
-        pass
-    def shaw():
-        pass
-    def skill():
-        pass
-    def type():
-        pass  
+    def random(solution):
+
+        return solution
+        
+    def route(solution):
+        
+        return solution
+    
+    def critical(solution):
+        
+        return solution
+    
+    def shaw(solution):
+        
+        return solution
+    
+    def skill(solution):
+        
+        return solution
+    
+    def type(solution):
+        
+        return solution  
         
     def __str__(self, row):
         pass
