@@ -13,6 +13,23 @@ from typing import List, Dict, Tuple
 from dataclasses import dataclass
 from enum import StrEnum
 
+class Resource_Data:
+    def __init__(self):
+        self.resource_cost = {
+            1: 139,  2: 139,  3: 139,  4: 139,  5: 139,  6: 139,  7: 139,
+            8: 119,  9: 119, 10: 119, 11: 119, 12: 119, 13: 119, 14: 119,
+            15: 99, 16: 99, 17: 99, 18: 99, 19: 99, 20: 99, 21: 99,
+            22: 79, 23: 79, 24: 79, 25: 79, 26: 79, 27: 79, 28: 79,
+            29: 59, 30: 59, 31: 59, 32: 59, 33: 59, 34: 59, 35: 59,
+            36: 39, 37: 39, 38: 39, 39: 39, 40: 39, 41: 39, 42: 39,
+            43: 19, 44: 19, 45: 19, 46: 19, 47: 19, 48: 19, 49: 19,
+        }
+        self.technician_workHourCost = 20
+
+        self.drivingHundredKMCost = 2.00*6
+        self.drivingSpeedHr = 60
+        self.drivingHourCost = self.drivingHundredKMCost*60/100
+
 
 class Tasks: 
     def __init__(self, row):
@@ -32,6 +49,7 @@ class Tasks:
 
     def __str__(self, row):
         pass
+
 
 class Technicians: 
     def __init__(self, row):
@@ -54,16 +72,19 @@ class Technicians:
     def __str__(self, row):
         pass
 
+
 class NodeType(StrEnum):
     TECH = "tech"
     TASK = "task"
     DEPOT = "depot"
     SHOP = "shop"
 
+
 @dataclass(frozen=True, slots=True)
 class Route_Node:
     node_type: NodeType
     id: int
+
 
 class Node_Distances: 
     def __init__(self, row):
@@ -80,6 +101,7 @@ class Node_Distances:
     def __str__(self, row):
         pass
 
+
 class Weather: 
     def __init__(self, row):
         self.average = 160.932
@@ -89,16 +111,21 @@ class Weather:
         self.wind = 163.668
         self.weatherType = 1
         
+
     def getWeather():
         pass
+
+
     def getPenalty(self, weatherType):
         if weatherType == 1:
             return self.average
         elif weatherType == 1:
             return self.average
     
+
     def __str__(self, row):
         pass
+
 
 class Solution: 
     def __init__(self, technicians):
@@ -107,26 +134,51 @@ class Solution:
 
         self.routes = {t.id: [] for t in technicians} 
         self.changedRoute = {t.id: False for t in technicians} # checks if there is need to recalculate costs and incomes
-        
+        self.task_costs = dict[int,float]
+
         self.monetaryCost = {t.id: 0.0 for t in technicians} #total cost per technician
         self.pathCost = {t.id: 0.0 for t in technicians} #driving (cost for path)
         self.timeCost = {t.id: 0.0 for t in technicians} #work (both for driving and work)
         self.weatherCost = {t.id: 0.0 for t in technicians} #security (total cost for technician in all types of weather)
+        self.resourcesCost = {t.id: 0.0 for t in technicians} #costs of resources used
         self.income = {t.id: 0.0 for t in technicians} #total income per tasks for technician
 
         self.totalMonetaryCost = 0.0
         self.totalPathCost = 0.0
         self.totalTimeCost = 0.0
         self.totalWeatherCost = 0.0
+        self.totalResourceCost = 0.0
         self.totalIncome = 0.0
 
+        self.data = Resource_Data()
 
-        self.workHourCost = 20
-        self.drivingHundredKMCost = 2.00*6
-        self.drivingSpeedHr = 60
-        self.drivingHourCost = self.drivingHundredKMCost*60/100
 
+    def copy(self):
+        new_solution = Solution.__new__(Solution)
+        new_solution.tech_map = self.tech_map
+        new_solution.master_ids = self.master_ids
+
+        new_solution.routes = self.routes.copy()
+        new_solution.changedRoute = self.changedRoute.copy()
+        
+        new_solution.monetaryCost = self.monetaryCost.copy()
+        new_solution.pathCost = self.pathCost.copy()
+        new_solution.timeCost = self.timeCost.copy()
+        new_solution.weatherCost = self.weatherCost.copy()
+        new_solution.resourcesCost = self.resourcesCost.copy()
+        new_solution.income = self.income.copy()
+
+        new_solution.totalMonetaryCost = self.totalMonetaryCost
+        new_solution.totalPathCost = self.totalPathCost
+        new_solution.totalTimeCost = self.totalTimeCost
+        new_solution.totalWeatherCost = self.totalWeatherCost
+        new_solution.totalResourceCost = self.totalResourceCost
+        new_solution.totalIncome = self.totalIncome
+
+        new_solution.data = self.data
+        return new_solution
     
+
     def updateCosts_Income(self, distances, tasks):
         routes = self.routes
         changedRoute = self.changedRoute
@@ -135,6 +187,7 @@ class Solution:
         totalTimeCost = 0.0
         totalWeatherCost = 0.0
         totalIncome = 0.0
+        totalResourceCost = 0.0
 
         for tech_id, cr in changedRoute.items():
             if cr:
@@ -146,142 +199,77 @@ class Solution:
 
                 weatherCost = 0.0
 
-
                 incomeTech = 0.0
+
+                resourceCost = 0.0
 
                 route = routes[tech_id]
                 ##for technician_id, route in routes.items():
                 for node in route:
                     next_route_position = node
-                    cost_drive += distances.get_distance(current_tech_position, next_route_position)
+                    cost_driveToTask = distances.get_distance(current_tech_position, next_route_position) 
+                    cost_drive += cost_driveToTask
+                    
                     current_tech_position = next_route_position
 
                     ### weather
                     ######
 
                     if node.node_type == NodeType.TASK:
-                        duration_work += tasks[node.id].duration
+                        duration_workTask = tasks[node.id].duration
+                        duration_work += duration_workTask
                         incomeTech += tasks[node.id].income
+                        resourceCostTask = 0.0
+                        for resource in tasks[node.id].resources:
+
+                            resourceCostTask += self.data.resource_cost[resource] 
+                        resourceCost += resourceCostTask
+                        self.task_costs[node.id] = (cost_driveToTask+duration_workTask)*self.data.technician_workHourCost + resourceCostTask + cost_driveToTask*self.data.drivingHourCost
 
 
-                self.pathCost[tech_id] = cost_drive * self.drivingHourCost                  
 
-                cost_work = duration_work * self.workHourCost
-                cost_drive = (self.pathCost[tech_id] / self.drivingHourCost) * self.workHourCost
+                self.pathCost[tech_id] = cost_drive * self.data.drivingHourCost                  
+
+                cost_work = duration_work * self.data.workHourCost
+                cost_drive = (self.pathCost[tech_id] / self.data.drivingHourCost) * self.data.workHourCost
                 self.timeCost[tech_id] = cost_drive + cost_work
 
                 ######### WEATHER
 
                 self.weatherCost[tech_id] = weatherCost
                 ################
-
+                self.resourcesCost[tech_id] = resourceCost
 
                 cost_monetary += self.pathCost[tech_id]
                 cost_monetary += self.timeCost[tech_id]
                 cost_monetary += self.weatherCost[tech_id]
+                cost_monetary += self.resourcesCost[tech_id]
                 
                 self.monetaryCost[tech_id] = cost_monetary
 
                 self.income[tech_id] = incomeTech
-
+                
                 self.changedRoute[tech_id] = False
+
 
             
             totalPathCost += self.pathCost[tech_id]
             totalTimeCost += self.timeCost[tech_id]
             totalWeatherCost += self.weatherCost[tech_id]
             totalIncome += self.income[tech_id]
+            totalResourceCost += self.resourcesCost[tech_id]
         
         self.totalMonetaryCost = totalPathCost + totalTimeCost + totalWeatherCost
         self.totalPathCost = totalPathCost
         self.totalTimeCost = totalTimeCost
         self.totalWeatherCost = totalWeatherCost
         self.totalIncome = totalIncome
-
-    """
-    def calculateMonetaryCostForTechnician(self):
-        changedRoute = self.changedRoute
-
-        for tech_id, cr in changedRoute:
-            if cr:
-                cost = 0
-                cost += self.pathCost[tech_id]
-                cost += self.timeCost[tech_id]
-                cost += self.weatherCost[tech_id]
-                
-                self.monetaryCost[tech_id] = cost
-
-        
-    def calculatePathCost(self, distances):
-        routes = self.routes
-        changedRoute = self.changedRoute
-
-        for tech_id, cr in changedRoute:
-            if cr:
-                current_tech_position = Route_Node(NodeType.TECH, tech_id)
-                cost = 0.0
-                for technician_id, route in routes:
-                    for node in route:
-                        next_route_position = node
-                        cost += distances.get_distance(current_tech_position, next_route_position)
-                        current_tech_position = next_route_position
-                self.pathCost[tech_id] = cost * self.drivingHourCost
+        self.totalResourceCost = totalResourceCost
 
 
-    def calculateTimeCost(self, tasks):
-        routes = self.routes
-        changedRoute = self.changedRoute
+    def copy_routes(self):
+        return Solution(deepcopy(self.routes))
 
-        for tech_id, cr in changedRoute:
-            if cr:
-                duration_work = 0.0
-                cost_drive = 0.0
-                for technician_id, route in routes:
-                    for node in route:
-                        duration_work += tasks[node.id].duration
-
-                cost_work = duration_work * self.workHourCost
-                cost_drive = (self.pathCost[tech_id] / self.drivingHourCost) * self.workHourCost
-                self.timeCost[tech_id] = cost_drive + cost_work
-
-
-    def calculateWeatherCost(self):
-        pass
-
-
-    def calculateIncome(self, tasks):
-        routes = self.routes
-        changedRoute = self.changedRoute
-        for tech_id, cr in changedRoute:
-            if cr:
-                incomeTech = 0.0
-   
-                for technician_id, route in routes:
-                    for node in route:
-                        incomeTech += tasks[node.id].income
-
-                self.income[tech_id] = incomeTech
-                
-
-    def updateTotals(self):
-        pathCost = 0
-        timeCost = 0
-        weatherCost = 0
-        income = 0
-
-        changedRoute = self.changedRoute 
-        for tech_id, cr in changedRoute:
-            pathCost += self.pathCost[tech_id]
-            timeCost += self.timeCost[tech_id]
-            weatherCost += self.weatherCost[tech_id]
-            income += self.income[tech_id]
-
-        self.totalMonetaryCost = pathCost + timeCost + weatherCost
-        self.totalPathCost = pathCost
-        self.totalTimeCost = timeCost
-        self.totalWeatherCost = weatherCost
-        self.totalIncome = income
-    """
 
     def __str__(self, row):
         pass
@@ -362,15 +350,18 @@ class Operators:
     def __str__(self, row):
         pass
 
+
 class Destroy_Operator: 
     def __init__(self, row):
         pass
     
+
     def random(solution, unassigned_tasks): #k should be 10% of all nodes (but why?)
-        new_solution = deepcopy(solution)
+        new_solution = solution.copy()
+
         all_nodes = [
         (tech_id, node)
-        for tech_id, route in solution.routes.items()
+        for tech_id, route in new_solution.routes.items()
         for node in route
         if node.node_type == NodeType.TASK
         ]
@@ -379,67 +370,157 @@ class Destroy_Operator:
         removed_nodes = random.sample(all_nodes, k)
 
         for tech_id, node in removed_nodes:
-
+            if not new_solution.changedRoute[tech_id]:
+                new_solution.routes[tech_id] = solution.routes[tech_id].copy()
+            
             new_solution.routes[tech_id].remove(node)
             unassigned_tasks.append(node)
 
             new_solution.changedRoute[tech_id] = True
 
         return new_solution, unassigned_tasks
-        
+
+
     def route(solution, unassigned_tasks):
-        new_solution = deepcopy(solution)
+        new_solution = solution.copy()
+
+        all_routes = [
+        (tech_id, route)
+        for tech_id, route in solution.routes.items()
+        ]
+
+        k = int(max(1, len(all_routes) * 0.1))
+        removed_nodes = random.sample(all_routes, k)
+
+        for tech_id, route in removed_nodes:
+            if not new_solution.changedRoute[tech_id]:
+                new_solution.routes[tech_id] = solution.routes[tech_id].copy()
+
+            new_solution.routes[tech_id] = []
+
+            for node in route:
+                if node.node_type == NodeType.TASK:
+                    unassigned_tasks.append(node)
+
+            new_solution.changedRoute[tech_id] = True
+
+
+        return new_solution, unassigned_tasks
+    
+
+    def critical(solution, unassigned_tasks):
+        new_solution = solution.copy()
+
         all_nodes = [
         (tech_id, node)
-        for tech_id, route in solution.routes.items()
+        for tech_id, route in new_solution.routes.items()
         for node in route
         if node.node_type == NodeType.TASK
         ]
 
-        k = int(max(1, len(solution.routes.items) * 0.1))
-        removed_nodes = random.sample(all_nodes, k)
+        
+        sorted_costs = sorted(new_solution.task_costs.items(), key=lambda x: x[1], reverse=True)
+
+        k = int(max(1, len(sorted_costs) * 0.1))
+
+        expensive_tasks = [task_id for task_id, cost in sorted_costs[:k]]
+
+
+        for tech_id, node in all_nodes:
+            if node.id in expensive_tasks:
+                if not new_solution.changedRoute[tech_id]:
+                    new_solution.routes[tech_id] = solution.routes[tech_id].copy()
+                
+                new_solution.routes[tech_id].remove(node)
+                unassigned_tasks.append(node)
+
+                new_solution.changedRoute[tech_id] = True
+
+
+        return new_solution, unassigned_tasks
+    
+
+    def shaw(solution, unassigned_tasks): ### needs relatedness
+        new_solution = solution.copy()
+
+
+
+        return new_solution, unassigned_tasks
+    
+
+    def skill(solution, unassigned_tasks, task): ### not finished
+        new_solution = solution.copy()
+
+        all_nodes = [
+        (tech_id, node)
+        for tech_id, route in new_solution.routes.items()
+        for node in route
+        if node.node_type == NodeType.TASK
+        ]
+
+        skills = set()
+        for tech_id, node in all_nodes:
+            skills.update(task[node.id].skills)
+
+        k = int(max(1, len(skills) * 0.1))
+        chosen_skills = random.sample(skills, k)
+        k_tasks = all_nodes * 0.05
+        
+        for skill in chosen_skills:
+            removed_task_count = 0
+            for tech_id, node in all_nodes:
+                if removed_task_count == k_tasks:
+                    break
+                current_task = task.id[node.id]
+                if skill in current_task.skills:
+                    if not new_solution.changedRoute[tech_id]:
+                        new_solution.routes[tech_id] = solution.routes[tech_id].copy()
+                    
+                    new_solution.routes[tech_id].remove(node)
+                    unassigned_tasks.append(node)
+
+                    new_solution.changedRoute[tech_id] = True
+                    removed_task_count+=1   
+
+
+        return new_solution, unassigned_tasks
+    
+
+    def type(solution, unassigned_tasks):
+        new_solution = solution.copy()
+
+        return new_solution, unassigned_tasks  
         
 
-        return solution, unassigned_tasks
-    
-    def critical(solution, unassigned_tasks):
-        
-        return solution, unassigned_tasks
-    
-    def shaw(solution, unassigned_tasks):
-        
-        return solution, unassigned_tasks
-    
-    def skill(solution, unassigned_tasks):
-        
-        return solution, unassigned_tasks
-    
-    def type(solution, unassigned_tasks):
-        
-        return solution, unassigned_tasks  
-        
     def __str__(self):
         pass
+
 
 class Repair_Operator: 
     def __init__(self):
         pass
+
+
     def greedy(solution, unassigned_tasks, technicians, tasks):
-        
-        return solution, unassigned_tasks
+        new_solution = solution.copy()
+
+        return new_solution, unassigned_tasks
     
+
     def regret(solution, unassigned_tasks, technicians, tasks):
-        
-        return solution, unassigned_tasks
+        new_solution = solution.copy()
+
+        return new_solution, unassigned_tasks
     
+
     def random(solution, unassigned_tasks, technicians, tasks):
-        
-        return solution, unassigned_tasks
+        new_solution = solution.copy()
+
+        return new_solution, unassigned_tasks
     
 
     def __str__(self, row):
         pass
-
 
 
 class ALNS_ALgorithm: 
@@ -448,16 +529,27 @@ class ALNS_ALgorithm:
         self.best_solution = Solution()
         self.operators = Operators()
 
+
     def selectOperators():
         pass
+
+
     def generateNewSolution():
         pass
+
+
     def acceptSimulatedAnnealingFunction():
         pass
+
+
     def updateWeights():
         pass
+
+
     def initialize():
         pass
 
+
     def __str__(self, row):
         pass
+
