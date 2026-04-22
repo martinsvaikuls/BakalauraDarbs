@@ -31,12 +31,12 @@ class Resource_Data:
         self.drivingHourCost = self.drivingHundredKMCost*60/100
 
 
-class Tasks: 
+class Task: 
     def __init__(self, row):
         self.id = int(row["id"])
         self.skills = set(ast.literal_eval(row["skills"]))
         
-        self.resources = set(ast.literal_eval(row["resources"]))
+        self.resources = [ast.literal_eval(row["resources"])]
 
         self.priority = int(row["priority"])
         self.start_tw = (datetime.datetime.fromisoformat(str(row["start_tw"])))
@@ -51,7 +51,7 @@ class Tasks:
         pass
 
 
-class Technicians: 
+class Technician: 
     def __init__(self, row):
         self.id = int(row["id"])
         self.master_id = int(row["master_id"])
@@ -178,6 +178,9 @@ class Solution:
         new_solution.data = self.data
         return new_solution
     
+    def add_taskToRoute(self, tech_id, task_id, position):
+
+        pass
 
     def updateCosts_Income(self, distances, tasks):
         routes = self.routes
@@ -374,7 +377,7 @@ class Destroy_Operator:
                 new_solution.routes[tech_id] = solution.routes[tech_id].copy()
             
             new_solution.routes[tech_id].remove(node)
-            unassigned_tasks.append(node)
+            unassigned_tasks.append(node.id)
 
             new_solution.changedRoute[tech_id] = True
 
@@ -400,7 +403,7 @@ class Destroy_Operator:
 
             for node in route:
                 if node.node_type == NodeType.TASK:
-                    unassigned_tasks.append(node)
+                    unassigned_tasks.append(node.id)
 
             new_solution.changedRoute[tech_id] = True
 
@@ -432,7 +435,7 @@ class Destroy_Operator:
                     new_solution.routes[tech_id] = solution.routes[tech_id].copy()
                 
                 new_solution.routes[tech_id].remove(node)
-                unassigned_tasks.append(node)
+                unassigned_tasks.append(node.id)
 
                 new_solution.changedRoute[tech_id] = True
 
@@ -464,7 +467,7 @@ class Destroy_Operator:
 
         k = int(max(1, len(skills) * 0.1))
         chosen_skills = random.sample(skills, k)
-        k_tasks = all_nodes * 0.05
+        k_tasks = int(max(1, len(all_nodes) * 0.05))
         
         for skill in chosen_skills:
             removed_task_count = 0
@@ -477,7 +480,7 @@ class Destroy_Operator:
                         new_solution.routes[tech_id] = solution.routes[tech_id].copy()
                     
                     new_solution.routes[tech_id].remove(node)
-                    unassigned_tasks.append(node)
+                    unassigned_tasks.append(node.id)
 
                     new_solution.changedRoute[tech_id] = True
                     removed_task_count+=1   
@@ -486,7 +489,7 @@ class Destroy_Operator:
         return new_solution, unassigned_tasks
     
 
-    def type(solution, unassigned_tasks):
+    def type(solution, unassigned_tasks): ### needs types
         new_solution = solution.copy()
 
         return new_solution, unassigned_tasks  
@@ -495,28 +498,147 @@ class Destroy_Operator:
     def __str__(self):
         pass
 
-
+TASK_OVERTIME = datetime.timedelta(minutes=15)
 class Repair_Operator: 
     def __init__(self):
         pass
+    def assign_feasability(task, tech, distances): # skills and time_windows
+        can_assign = True
 
+        for skill in task.skills:
+            if not skill in tech.skills:
+                return False
+        travel_time = distances.getDistance(Route_Node(NodeType.TECH,tech.id),Route_Node(NodeType.TASK,task.id))
+        if tech.start_tw + datetime.timedelta(minutes=travel_time) + datetime.timedelta(minutes=task.duration) > task.end_tw + TASK_OVERTIME:
+            return False
+        
+        return can_assign
 
-    def greedy(solution, unassigned_tasks, technicians, tasks):
-        new_solution = solution.copy()
+    def tech_goRestock(route):
+        #insert shop if feasable and best place
 
-        return new_solution, unassigned_tasks
+        pass
+
+    def routeCost_and_feasability(self, new_route, tech, distances, tasks, data): # creates new route considering everything that is hard feasability # weather is when insertion is possible 
+        cost = 0.0
+        current_techLocation = Route_Node(NodeType.TECH, tech.id)
+        
+        currentTime = tech.start_tw 
+        shiftEnd = tech.end_tw
+        
+        overTime = 0
+        ### need to collect all resources and check when each possible time to go to shop
+        resources_needed = {}
+        currentTask = 0
+        restock_nodes = []
+
+        for nodeType, task in new_route.items():
+            if nodeType == NodeType.TASK:
+                for resource in tasks[task].resources.items():
+                    resources_needed[resource][0] += 1 # saves resouce count needed
+                    resources_needed[resource][1] += data.resource_cost[resource] # saves cost
+                
+                for resource_id, resource_count in tech.resources.items():
+                    if resource_count < resources_needed.get(resource_id)[0]:
+                        if resources_needed[resource_id][2] is None:
+                            resources_needed[resource_id][2] = task # saves first task when resource is needed
+                        ## if tech does not necessary resources at this point we consider to go to depo/shop at any point in previous tasks.                
+                currentTask += 1
+
+        
+        restock_node, position = self.tech_goRestock(new_route[:currentTask], tech, tasks, distances)
+        if position == -1:
+            return cost, False #not feasable to go to shop and retain all tasks
+
+        # no need to append because 1 best node is given or not feasable
+        
+        for task in new_route:
+            if not task.resources.issubset(tech.resources):
+                # go to nerest shop
+                # need to consider best time to go to shop 
+                pass
+            
+            next_location = Route_Node(NodeType.TASK, task.id)
+            travel_duration = distances.get_distance(current_techLocation,next_location)
+
+        # resources
+        
+        return cost
     
 
-    def regret(solution, unassigned_tasks, technicians, tasks):
+    def greedy(self, solution, unassigned_tasks, technicians, tasks, distances):
         new_solution = solution.copy()
 
-        return new_solution, unassigned_tasks
+        unfeasable_tasks = []
+        
+        while unassigned_tasks: ### set itteration count for stopping inf loop, ### no infinite loop because of pop
+            candidates = []
+            for task_id in unassigned_tasks:
+                for tech in technicians:
+                    if not self.assign_feasability(tasks[task_id], tech, distances): ### Checks if skills and time_window is within limits
+                        continue
+
+                    route = new_solution.routes[tech.id]
+                    old_cost = new_solution.monetaryCost[tech.id]
+
+                    for position in range(len(route)):
+                        new_route = route[:position] + Route_Node(NodeType.TASK, task_id) + route[position:]
+                        new_cost, feasable = self.routeCost_and_feasability(new_route, tech, distances, tasks) 
+                        
+                        if not feasable:
+                            break
+
+                        difference = new_cost - old_cost 
+                        candidates.append((difference, tech.id, position, tasks[task_id]))
+
+            if not candidates:
+                unfeasable_tasks.append(unassigned_tasks.pop(0))
+                continue
+
+            candidates.sort(key=lambda x: x[0])
+
+            chosen = candidates[0]
+            _, tech_id, pos, task = chosen
+
+            new_solution.add_task(tech_id, task, pos)
+            unassigned_tasks.remove(task)
+
+            
+        return new_solution, unfeasable_tasks
     
 
-    def random(solution, unassigned_tasks, technicians, tasks):
+    def regret(self, solution, unassigned_tasks, technicians, tasks):
         new_solution = solution.copy()
 
-        return new_solution, unassigned_tasks
+        unfeasable_tasks = []
+
+
+        return new_solution, unfeasable_tasks
+    
+
+    def random(self, solution, unassigned_tasks, technicians, tasks):
+        new_solution = solution.copy()
+
+        unfeasable_tasks = []
+        while unassigned_tasks:
+            tech = random.choice(technicians)
+            task_id = random.choice(unassigned_tasks)
+            if self.assign_feasability(tasks[task_id], tech): ### Checks if skills and time_window is within limits
+                route = new_solution.routes[tech.id]
+
+                for position in range(len(route)):
+                    new_route = route[:position] + Route_Node(NodeType.TASK,task_id) + route[position:]
+                    new_cost = self.route_cost(new_route, tech)
+
+                    difference = new_cost - old_cost 
+                    candidates.append((difference, tech.id, position, tasks[task_id]))
+
+
+
+
+        return new_solution, unfeasable_tasks
+    
+
     
 
     def __str__(self, row):
@@ -528,6 +650,9 @@ class ALNS_ALgorithm:
         self.simulatedAnnealing_temperature = 100.0
         self.best_solution = Solution()
         self.operators = Operators()
+
+        self.tasks = dict(int,Task())
+        self.technicians = dict(int,Technician())
 
 
     def selectOperators():
