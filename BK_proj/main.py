@@ -13,6 +13,10 @@ from typing import List, Dict, Tuple
 from dataclasses import dataclass
 from enum import StrEnum
 
+VANSIZE = 120
+TASK_OVERTIME = datetime.timedelta(minutes=15)
+TECH_OVERTIME = datetime.timedelta(minutes=60)
+
 class Resource_Data:
     def __init__(self):
         self.resource_cost = {
@@ -57,7 +61,7 @@ class Technician:
         self.master_id = int(row["master_id"])
         self.skills = set(ast.literal_eval(row["skills"]))
 
-        self.resources = set(ast.literal_eval(row["resources"]))
+        self.resources = dict(ast.literal_eval(row["resources"]))
 
         self.start_tw = (datetime.datetime.fromisoformat(str(row["start_tw"])))
         self.end_tw = (datetime.datetime.fromisoformat(str(row["end_tw"])))
@@ -498,7 +502,7 @@ class Destroy_Operator:
     def __str__(self):
         pass
 
-TASK_OVERTIME = datetime.timedelta(minutes=15)
+
 class Repair_Operator: 
     def __init__(self):
         pass
@@ -514,12 +518,52 @@ class Repair_Operator:
         
         return can_assign
 
-    def tech_goRestock(route):
+    def tech_goRestock(route, tech, tasks, distances, resources_needed, restocking_nodes):
+        
+        
+
         #insert shop if feasable and best place
+        #resource timings
+        #shops + depo
+        #time_windows + distances
 
-        pass
+        # data type of all resources needed sorted from earliest to latest and ID, count
+        # available space
+        # what to do if no space available -> DEPO instead of SHOP
+        # what if going to shop/depo twice is cheaper than once
+        # SHOP/DEPO duration 10 minutes + travel duration to and from
+        # if restocked at shop +10% to cost
+        # if can't restock return is_restocked = False
+        candidates = []
 
-    def routeCost_and_feasability(self, new_route, tech, distances, tasks, data): # creates new route considering everything that is hard feasability # weather is when insertion is possible 
+        current_tech_location = Route_Node(NodeType.TECH, tech.id)
+        # 1. can we even restock
+        cost = 0.0
+        is_restocked = False
+        restocking_route = route
+
+        techvanSize = sum(tech.resources.values())
+        currentTech_availableVanSize = VANSIZE - techvanSize # wont work because tech vansize is a list
+        for node in route:
+            if node.node_type == NodeType.TASK:
+                for min_restockSize in restockNeeded:
+                if currentTech_availableVanSize - min_restockSize >= 0:
+                    for restocking_node in restocking_nodes:
+                
+                    spent_Resources = 
+
+
+        # for route
+        return restocking_route, cost, is_restocked
+        
+    ##
+
+    def routeCost_and_feasability(self, new_route, tech, distances, tasks, data, restocking_nodes): # creates new route considering everything that is hard feasability # weather is when insertion is possible 
+        ### resources
+        ### time_windows + distance duration
+        ### costs
+
+        
         cost = 0.0
         current_techLocation = Route_Node(NodeType.TECH, tech.id)
         
@@ -528,30 +572,54 @@ class Repair_Operator:
         
         overTime = 0
         ### need to collect all resources and check when each possible time to go to shop
-        resources_needed = {}
+        total_resourcesUsed = {}
+        total_resourcesToRestock = {}
+
+        needed_toRestock = False
         currentTask = 0
+        lastTask = 0
         restock_nodes = []
 
         for nodeType, task in new_route.items():
             if nodeType == NodeType.TASK:
                 for resource in tasks[task].resources.items():
-                    resources_needed[resource][0] += 1 # saves resouce count needed
-                    resources_needed[resource][1] += data.resource_cost[resource] # saves cost
+                    if resource not in total_resourcesUsed[resource]:
+                        total_resourcesUsed[resource] = [0, 0.0] 
+                    total_resourcesUsed[resource][0] += 1 # saves resouce count needed
+                    total_resourcesUsed[resource][1] += data.resource_cost[resource] # saves cost
                 
                 for resource_id, resource_count in tech.resources.items():
-                    if resource_count < resources_needed.get(resource_id)[0]:
-                        if resources_needed[resource_id][2] is None:
-                            resources_needed[resource_id][2] = task # saves first task when resource is needed
-                        ## if tech does not necessary resources at this point we consider to go to depo/shop at any point in previous tasks.                
+                    if total_resourcesUsed[resource_id]:
+                        if resource_count < total_resourcesUsed.get(resource_id)[0]:
+                            needed_toRestock = True
+                            if resource_id not in total_resourcesToRestock:
+                                    total_resourcesToRestock[resource] = [0, None] 
+                            if total_resourcesToRestock[resource_id][1] is None:
+                                total_resourcesToRestock[resource_id][1] = task # saves first task when resource is needed
+                            total_resourcesToRestock[0] = total_resourcesToRestock - resource_count
+                            ## if tech does not have necessary resources at this point we consider to go to depo/shop at any point in previous tasks.                
+                            #lastTask = currentTask # ! should program even consider this, and not give full route and then output new route
+                
                 currentTask += 1
+        if needed_toRestock:
+            new_route, resource_costs, is_restocked = self.tech_goRestock(new_route, tech, tasks, distances, resources_needed, restocking_nodes)
+            if not is_restocked:
+                return cost, False #not feasable to go to shop and retain all tasks
+            ## ! cost should be gotten from resources_needed ignoring the resources that needed restock
+            
+            ## ! total_resources - resources_restocked
+            for resource_id, values in total_resourcesToRestock.items():
+                new_cost = total_resourcesUsed[resource_id][1] / total_resourcesUsed[resource_id][0] * (total_resourcesUsed[resource_id][0] - values[0]) 
+                total_resourcesUsed[resource_id][0] -= values[0]
+                total_resourcesUsed[resource_id][1] -= new_cost
+            cost += resource_costs
+            for cost_resource in total_resourcesUsed.values():
+                cost += cost_resource[1]
 
-        
-        restock_node, position = self.tech_goRestock(new_route[:currentTask], tech, tasks, distances)
-        if position == -1:
-            return cost, False #not feasable to go to shop and retain all tasks
 
         # no need to append because 1 best node is given or not feasable
         
+
         for task in new_route:
             if not task.resources.issubset(tech.resources):
                 # go to nerest shop
@@ -630,10 +698,8 @@ class Repair_Operator:
                     new_route = route[:position] + Route_Node(NodeType.TASK,task_id) + route[position:]
                     new_cost = self.route_cost(new_route, tech)
 
-                    difference = new_cost - old_cost 
-                    candidates.append((difference, tech.id, position, tasks[task_id]))
-
-
+                    #difference = new_cost - old_cost 
+                    #candidates.append((difference, tech.id, position, tasks[task_id]))
 
 
         return new_solution, unfeasable_tasks
@@ -667,8 +733,8 @@ class ALNS_ALgorithm:
         pass
 
 
-    def updateWeights():
-        pass
+    def updateWeights(self,score):
+        self.operators.renew_weights(score)
 
 
     def initialize():
