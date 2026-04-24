@@ -513,16 +513,20 @@ class Repair_Operator:
         for skill in task.skills:
             if not skill in tech.skills:
                 return False
+        
         travel_time = distances.getDistance(Route_Node(NodeType.TECH,tech.id),Route_Node(NodeType.TASK,task.id))
+        travel_time_home = distances.getDistance(Route_Node(NodeType.TASK,task.id),Route_Node(NodeType.TECH,tech.id))
+        
         if tech.start_tw + datetime.timedelta(minutes=travel_time) + datetime.timedelta(minutes=task.duration) > task.end_tw + TASK_OVERTIME:
             return False
         
+        if task.start_tw +  datetime.timedelta(minutes=task.duration)+ datetime.timedelta(minutes=travel_time_home) > tech.end_tw + TECH_OVERTIME:
+            return False
+
         return can_assign
 
     def tech_goRestock(route, tech, tasks, distances, resources_needed, restocking_nodes):
         
-        
-
         #insert shop if feasable and best place
         #resource timings
         #shops + depo
@@ -547,11 +551,12 @@ class Repair_Operator:
         currentTech_availableVanSize = VANSIZE - techvanSize # wont work because tech vansize is a list
         for node in route:
             if node.node_type == NodeType.TASK:
-                for min_restockSize in restockNeeded:
-                if currentTech_availableVanSize - min_restockSize >= 0:
-                    for restocking_node in restocking_nodes:
+                pass
+                #for min_restockSize in restockNeeded:
+                #if currentTech_availableVanSize - min_restockSize >= 0:
+                #    for restocking_node in restocking_nodes:
                 
-                    spent_Resources = 
+                #    spent_Resources = 
 
          ## if tech does not have necessary resources at this point we consider to go to depo/shop at any point in previous tasks.
 
@@ -580,31 +585,38 @@ class Repair_Operator:
         total_resourcesToRestock = {}
 
         needed_toRestock = False
-        currentTask = 0
 
-        for nodeType, task in new_route.items():
-            if nodeType == NodeType.TASK:
-                for resource_id, count in tasks[task].resources.items():
+        for node in new_route:
+            if node.node_type == NodeType.TASK:
+                for resource_id, count in tasks[node.id].resources.items():
                     if resource_id not in total_resourcesUsed:
                         total_resourcesUsed[resource_id] = [0, 0.0] 
 
                     total_resourcesUsed[resource_id][0] += count # saves resouce count needed
                     total_resourcesUsed[resource_id][1] += data.resource_cost[resource_id] # saves cost
                 
-                for resource_id, resource_count in tech.resources.items():
-                    if total_resourcesUsed[resource_id]:
-                        if resource_count < total_resourcesUsed.get(resource_id)[0]:
-                            needed_toRestock = True
 
-                            if resource_id not in total_resourcesToRestock:
-                                    total_resourcesToRestock[resource_id] = [0, None] 
+                    resource_data = total_resourcesUsed.get(resource_id)
+                    resource_used = resource_data[0]
+                    tech_resource_store = 0
 
-                            if total_resourcesToRestock[resource_id][1] is None:
-                                total_resourcesToRestock[resource_id][1] = task # saves first task when resource is needed
-                            total_resourcesToRestock[resource_id][0] = total_resourcesToRestock - resource_count
-                                           
-                currentTask += 1
+                    if resource_id not in tech.resources.keys():
+                        tech_resource_store = 0
+                    else:
+                        tech_resource_store = tech.resources.get(resource_id)
+                    
 
+                    if tech_resource_store < resource_used:
+                        needed_toRestock = True
+
+                        if resource_id not in total_resourcesToRestock:
+                            total_resourcesToRestock[resource_id] = [0, None] 
+
+                        if total_resourcesToRestock[resource_id][1] is None:
+                            total_resourcesToRestock[resource_id][1] = node.id # saves first task when resource is needed
+                        
+                        total_resourcesToRestock[resource_id][0] = resource_used - tech_resource_store
+              
 
         if needed_toRestock:
             new_route, resource_costs, is_restocked = self.tech_goRestock(new_route, tech, tasks, distances, total_resourcesToRestock, restocking_nodes)
@@ -621,14 +633,10 @@ class Repair_Operator:
             for cost_resource in total_resourcesUsed.values():
                 cost += cost_resource[1]
         else:
-            for task in new_route:
-                if not task.resources.issubset(tech.resources):
-                    # go to nerest shop
-                    # need to consider best time to go to shop 
-                    pass
-                
-                next_location = Route_Node(NodeType.TASK, task.id)
-                travel_duration = distances.get_distance(current_techLocation,next_location)
+            ### ! time windows and what not
+            for node_type, id in new_route:
+
+
 
         # resources
         
@@ -641,7 +649,7 @@ class Repair_Operator:
             duration_0 = tasks[nodes[0].id].duration + TECH_REST
         
         else:
-            start_time_0 = tech[nodes[0].id].start_tw
+            start_time_0 = tech.start_tw
             duration_0 = 0
 
         travelTime0_1 = distances.get_distance(nodes[0], nodes[1])
@@ -657,14 +665,14 @@ class Repair_Operator:
         travelTime1_2 = distances.get_distance(nodes[1], nodes[2])
 
         if nodes[2].node_type == NodeType.TASK:
-            end_tw_2 = tasks[nodes[2].id].start_tw
+            end_tw_2 = tasks[nodes[2].id].end_tw
             duration_2 = tasks[nodes[2].id].duration + TECH_REST
             
             if end_tw_1 + duration_1 + travelTime1_2 + duration_2 <= end_tw_2 + TASK_OVERTIME:
                 return True
         
         else:
-            end_tw_2 = tech[nodes[2].id].start_tw
+            end_tw_2 = tech.end_tw
             duration_2 = 0
             
             if end_tw_1 + duration_1 + travelTime1_2 + duration_2 <= end_tw_2 + TECH_OVERTIME:
@@ -688,7 +696,7 @@ class Repair_Operator:
                     route = new_solution.routes[tech.id]
                     old_cost = new_solution.monetaryCost[tech.id]
                     new_task_insertion = Route_Node(NodeType.TASK, task_id)
-                    for position in range(len(route)): 
+                    for position in range(len(route) - 1): 
                         ### ! does not consider that task insertion can happen so that technciian starts task and all future tasks get ignored because current one takes too long
                         ### ! does not consider if there is any available time (min duration of task)
                         ### ! does not consider tech start home and end home
@@ -696,18 +704,18 @@ class Repair_Operator:
                             continue
                         if route[position+1].node_type in [NodeType.SHOP, NodeType.DEPOT]:
                             continue
-
-                        if not self.timeWindow_feasability([route[position], new_task_insertion, route[position+1]], distances, tasks):
+                        
+                        if not self.timeWindow_feasability([route[position], new_task_insertion, route[position+1]], tech, distances, tasks):
                             continue
 
-                        new_route = route[:position] +  new_task_insertion + route[position:]
+                        new_route = route[:position] +  [new_task_insertion] + route[position:]
                         new_cost, feasable = self.routeCost_and_feasability(new_route, tech, distances, tasks) 
                     
                         if not feasable:
-                            break
+                            continue
 
                         difference = new_cost - old_cost 
-                        candidates.append((difference, tech.id, position, tasks[task_id]))
+                        candidates.append((difference, tech.id, position, task_id))
 
             if not candidates:
                 unfeasable_tasks.append(unassigned_tasks.pop(0))
@@ -716,10 +724,10 @@ class Repair_Operator:
             candidates.sort(key=lambda x: x[0])
 
             chosen = candidates[0]
-            _, tech_id, pos, task = chosen
+            _, tech_id, pos, task_id = chosen
 
-            new_solution.add_task(tech_id, task, pos)
-            unassigned_tasks.remove(task)
+            new_solution.add_task(tech_id, task_id, pos)
+            unassigned_tasks.remove(task_id)
 
             
         return new_solution, unfeasable_tasks
@@ -754,9 +762,6 @@ class Repair_Operator:
 
         return new_solution, unfeasable_tasks
     
-
-    
-
     def __str__(self, row):
         pass
 
