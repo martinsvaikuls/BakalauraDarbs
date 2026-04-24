@@ -586,6 +586,7 @@ class Repair_Operator:
 
         needed_toRestock = False
 
+        ### ! recomputes too often
         for node in new_route:
             if node.node_type == NodeType.TASK:
                 for resource_id, count in tasks[node.id].resources.items():
@@ -635,6 +636,7 @@ class Repair_Operator:
         else:
             ### ! time windows and what not
             for node_type, id in new_route:
+                pass
 
 
 
@@ -767,33 +769,80 @@ class Repair_Operator:
 
 
 class ALNS_ALgorithm: 
-    def __init__(self, row):
-        self.simulatedAnnealing_temperature = 100.0
-        self.best_solution = Solution()
+    def __init__(self, run_time = 60.0, simulatedAnnealing_temperature = 100.0, simulatedAnnealing_cooling = 0.995):
+        self.run_time = run_time
+        
+        self.simulatedAnnealing_temperature = simulatedAnnealing_temperature
+        self.simulatedAnnealing_cooling = simulatedAnnealing_cooling
+
+        self.best_solution: Solution
+        self.current_solution: Solution
+        self.new_solution: Solution
+
         self.operators = Operators()
+        self.score = 0
 
-        self.tasks = dict(int,Task())
-        self.technicians = dict(int,Technician())
+        self.tasks = {}
+        self.technicians = {}
+
+    def construct(self):
+        self.new_solution = Solution(self.technicians)
+        shuffled_tasks = self.tasks
+        random.shuffle(shuffled_tasks)
+
+        for task in shuffled_tasks:
+            candidates = []
+            for tech in self.technicians:
+                pass ## ! need to take functions from repair operators
 
 
-    def selectOperators():
-        pass
+    def selectOperators(self):
+        self.operators.roulette()
 
 
-    def generateNewSolution():
-        pass
+    def generateNewSolution(self):
+        self.new_solution = self.operators.destroy(self.best_solution)
+        self.new_solution = self.operators.repair(self.new_solution)
+        
+
+    def acceptSimulatedAnnealingFunction(self):
+        if self.new_solution.totalMonetaryCost < self.current_solution.totalMonetaryCost:
+            return True
+
+        delta = self.new_solution.totalMonetaryCost - self.current_solution.totalMonetaryCost
+        prob = min(1.0, math.exp(-delta / self.simulatedAnnealing_temperature))
+
+        self.simulatedAnnealing_temperature *= self.simulatedAnnealing_cooling
+        return random.random() < prob
 
 
-    def acceptSimulatedAnnealingFunction():
-        pass
-
-
-    def updateWeights(self,score):
+    def updateWeights(self, score):
         self.operators.renew_weights(score)
 
 
-    def initialize():
-        pass
+    def initialize(self):
+        self.construct()
+
+        start_time = time()
+        while time() - start_time <= self.run_time:
+            self.selectOperators()
+            
+            self.generateNewSolution()
+
+            
+
+            if self.acceptSimulatedAnnealingFunction():
+                if self.current_solution.totalMonetaryCost < self.new_solution.totalMonetaryCost:
+                    self.score = 1
+                else:
+                    self.score = 3
+                    if self.new_solution.monetaryCost < self.best_solution.monetaryCost:
+                        self.score = 5
+                
+                self.current_solution = self.new_solution
+
+            self.updateWeights()
+
 
 
     def __str__(self, row):
