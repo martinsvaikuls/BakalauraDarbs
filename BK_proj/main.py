@@ -629,7 +629,12 @@ class Repair_Operator:
         # ! add weather 
         travel_insertion_next = distances(Distance_Node(insertion_node.node_type, insertion_node.id),Distance_Node(next_nodes[0].node_type, next_nodes[0].id))
         
-        start_next_node = next_nodes[0].start_time
+        if next_nodes[0].start_time is not None:
+            start_next_node = next_nodes[0].start_time
+        else: 
+            start_next_node = max(tasks[next_nodes[0].id].start_tw, insertion_node_end + travel_insertion_next)
+
+                                  
         if insertionCehck: #! in full rebuild after building the route up to new insertion could just stop if next step can be done
             if insertion_node_end + travel_insertion_next < start_next_node:
                 insertion_node.start_time = insertion_node_start
@@ -660,11 +665,45 @@ class Repair_Operator:
         return [], False
 
 
+    def rightSide_twCheck(node, task):
+        if task.end_tw + TASK_OVERTIME == node.end_time:
+            return True
+        return False
+
+
+    def task_insertion(self, prev_nodes, insertion_task, next_nodes, tech, distances, tasks):
+        new_route, feasable = self.insertion_feasability(prev_nodes, insertion_task, next_nodes, tech, tasks, distances)
+
+        if not feasable: #! rebuilding whole route
+            # ! should consider if both sides need rebuilding or can only left side or right side
+            
+            insertion_index = len(prev_nodes)
+            # ! if ends at end_tw + overtime then on right side can't change anything 
+        
+            if self.rightSide_twCheck(prev_nodes[insertion_index-1], tasks[prev_nodes[insertion_index-1].id]): #! unless it is technician
+                new_route, feasable = self.insertion_feasability(prev_nodes[-1], insertion_task, next_nodes[0], tech, tasks, distances)
+                route = [insertion_task] + next_nodes
+                for i in range(len(route)-1):
+                    new_route, feasable = self.insertion_feasability(route[i], route[i+1], route[i+2], tech, tasks, distances)
+                    
+            else:
+                route = prev_nodes + [insertion_task] + next_nodes
+                for i in range(len(route)-1): # * 0 1 2 3 4
+                    new_route, feasable = self.insertion_feasability(route[i], route[i+1], route[i+2], tech, tasks, distances)
+                
+
+        if not feasable:
+            return [], False    
+        
+        return new_route, feasable
+
+
     def full_feasability(self, route, tech, tasks, distances):
         for node in route:
             pass
 
         return True
+
 
     def tech_goRestock(self, firstResourceFailurePoint, route, tech, tasks, distances, resources_needed, restocking_nodes):
         #!
@@ -841,21 +880,7 @@ class Repair_Operator:
             new_route.insert(i + 1, shop_node)
 
             # resources
-    
-    def task_insertion(self, prev_nodes, insertion_task, next_nodes, tech, distances, tasks):
-        new_route, feasable = self.insertion_feasability(prev_nodes, insertion_task, next_nodes, tech, tasks, distances)
 
-        if not feasable: #! rebuilding whole route
-            # ! should consider if both sides need rebuilding or can only left side or right side
-            route = prev_nodes + next_nodes
-            insertion_index = len(prev_nodes)
-
-            new_route, feasable = self.insertion_feasability(prev_nodes, insertion_task, next_nodes, tech, tasks, distances)
-
-        if not feasable:
-            return [], False    
-        
-        return new_route, feasable
 
     def greedy(self, solution, unassigned_tasks, technicians, tasks, distances, data, restocking_nodes):
         new_solution = solution.copy()
@@ -887,11 +912,15 @@ class Repair_Operator:
                         
                         new_route, feasable = self.task_insertion(route[:position], new_task_insertion, route[position:], tech, tasks, distances, data)
 
-                        new_route, new_cost, feasable = self.routeCost_and_feasability(new_route, tech, tasks, distances, data, restocking_nodes) 
+                        #new_route, new_cost, feasable = self.routeCost_and_feasability(new_route, tech, tasks, distances, data, restocking_nodes) 
                         
                         # ! restocking
                         if not feasable:
                             continue
+                        
+                        new_route.updateCosts_Income(distances,tasks)
+                        
+                        new_cost = new_route.totalMonetaryCost 
 
                         difference = new_cost - old_cost 
                         candidates.append((difference, tech.master_id, position, task_id))
@@ -1063,4 +1092,3 @@ class ALNS_ALgorithm:
 
     def __str__(self, row):
         pass
-
