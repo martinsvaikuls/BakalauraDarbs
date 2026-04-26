@@ -47,7 +47,7 @@ class Task:
         self.skills = set(ast.literal_eval(row["skills"]))
         
         self.resources = [ast.literal_eval(row["resources"])]
-        self.income = float(row["home_lat"])
+        #!self.income = float(row["income"])
         self.priority = int(row["priority"])
         self.start_tw = (datetime.datetime.fromisoformat(str(row["start_tw"])))
         self.end_tw = (datetime.datetime.fromisoformat(str(row["end_tw"])))
@@ -67,7 +67,7 @@ class Technician:## ! resources is not set to master_id but to id, so resources 
         self.master_id = int(row["master_id"])
         self.skills = set(ast.literal_eval(row["skills"]))
 
-        self.resources = dict(ast.literal_eval(row["resources"]))
+        #!self.resources = dict(ast.literal_eval(row["resources"]))
 
         self.start_tw = [datetime.datetime.fromisoformat(str(row["start_tw"]))]
         self.end_tw = [datetime.datetime.fromisoformat(str(row["end_tw"]))]
@@ -76,11 +76,35 @@ class Technician:## ! resources is not set to master_id but to id, so resources 
         self.long = float(row["home_long"])
         self.home = self.lat, self.long
 
-        self.created = int(row["created"])
-        self.new_start_tw = 0
+        #!self.created = int(row["created"])
+        #!self.new_start_tw = 0
 
     def __str__(self, row):
         pass
+
+class Depot:
+    def __init__(self, row):
+        self.id = int(row["id"])
+        self.resources = dict(ast.literal_eval(row["resources"]))
+
+        self.start_tw = [datetime.datetime.fromisoformat(str(row["start_tw"]))]
+        self.end_tw = [datetime.datetime.fromisoformat(str(row["end_tw"]))]
+
+        self.lat = float(row["home_lat"])
+        self.long = float(row["home_long"])
+
+
+class Shop:
+    def __init__(self, row):
+        self.id = int(row["id"])
+        self.resources = dict(ast.literal_eval(row["resources"]))
+
+        self.start_tw = [datetime.datetime.fromisoformat(str(row["start_tw"]))]
+        self.end_tw = [datetime.datetime.fromisoformat(str(row["end_tw"]))]
+
+        self.lat = float(row["home_lat"])
+        self.long = float(row["home_long"])
+
 
 
 class NodeType(StrEnum):
@@ -104,18 +128,40 @@ class Distance_Node:
 
 
 class Distances: 
-    def __init__(self, row):
+    def __init__(self):
         self.distances: Dict[Tuple[Distance_Node, Distance_Node], float] = {}
+        self.coords: Dict[Distance_Node, Tuple[float, float]] = {}
+
+
+    def add_coords(self, location_type, locations):
+        for location in locations.values():
+            if location_type is not NodeType.TECH:
+                self.coords[Distance_Node(location_type, location.id)] = (location.lat, location.long)
+            else:
+                self.coords[Distance_Node(location_type, location.master_id)] = (location.lat, location.long)
+
+
+    def euclidean_distance(self, a,b):
+        return math.hypot(a[0] - b[0], a[1] - b[1])
+
 
     def get_distance(self, a: Distance_Node, b: Distance_Node):
         if (a, b) not in self.distances:
             self.update_distance(a,b)
-
+             
         return self.distances[(a, b)]
 
-    def update_distance():
-        #! needs to get lon lat
-        pass
+
+    def update_distance(self, a,b): # ! 
+        coord_a = self.coords[a]
+        coord_b = self.coords[b]
+
+        distance = self.euclidean_distance(coord_a,coord_b)
+
+        self.distances[(a,b)] = distance
+        self.distances[(b,a)] = distance
+
+
     def __str__(self, row):
         pass
 
@@ -293,7 +339,15 @@ class Solution:
 
 
     def __str__(self, row):
-        pass
+        masterID_list = []
+        tech_id_list = []
+        for master_id, route in self.routes.items():
+            task_ids = [task.id for task in route]
+            #master_id = self.master_ids[tech_id]
+            masterID_list.append(f" \"{master_id}\": {task_ids},")
+            #tech_id_list.append(f" \"{tech_id}\": {task_ids},")
+
+        return  f"self.totalMonetaryCost" + "\n" + " ".join(masterID_list)
     """
 
     """     
@@ -352,14 +406,14 @@ class Operators:
                 return self.destroy_ops.type(solution, unassigned_tasks)
             
 
-    def repair(self, solution, unassigned_tasks, technicians, tasks, distances):
+    def repair(self, solution, unassigned_tasks, technicians, tasks, distances, data, restocking_nodes):
         match self.chosen_repair:
             case 0:
-                return self.repair_ops.greedy(solution, unassigned_tasks, technicians, tasks, distances)
+                return self.repair_ops.greedy(solution, unassigned_tasks, technicians, tasks, distances, data, restocking_nodes)
             case 1:
-                return self.repair_ops.regret(solution, unassigned_tasks, technicians, tasks, distances)
+                return self.repair_ops.regret(solution, unassigned_tasks, technicians, tasks, distances, data, restocking_nodes)
             case 2:
-                return self.repair_ops.random(solution, unassigned_tasks, technicians, tasks, distances)
+                return self.repair_ops.random(solution, unassigned_tasks, technicians, tasks, distances, data, restocking_nodes)
 
 
     def renew_weights(self):
@@ -671,7 +725,7 @@ class Repair_Operator:
         return False
 
 
-    def task_insertion(self, prev_nodes, insertion_task, next_nodes, tech, distances, tasks):
+    def task_insertion(self, prev_nodes, insertion_task, next_nodes, tech, tasks, distances):
         new_route, feasable = self.insertion_feasability(prev_nodes, insertion_task, next_nodes, tech, tasks, distances)
 
         if not feasable: #! rebuilding whole route
@@ -696,13 +750,6 @@ class Repair_Operator:
             return [], False    
         
         return new_route, feasable
-
-
-    def full_feasability(self, route, tech, tasks, distances):
-        for node in route:
-            pass
-
-        return True
 
 
     def tech_goRestock(self, firstResourceFailurePoint, route, tech, tasks, distances, resources_needed, restocking_nodes):
@@ -870,7 +917,7 @@ class Repair_Operator:
         
         else: ### ! if can insert task without affecting the surrounding tasks at current time then we just insert and move on
                 ### ! time windows and what not
-              
+            """
             shop_node = Route_Node(NodeType.SHOP, shop.id, start_time=None, end_time=None)
             ## ! try to insert, maybe no need to rebuild, if can't insert then try to rebuild the route
             #pre_end + travel + insertion_duration + travel + next_start
@@ -878,7 +925,7 @@ class Repair_Operator:
 
             ## ! try to rebuild from insertion outwards?
             new_route.insert(i + 1, shop_node)
-
+            """
             # resources
 
 
@@ -910,7 +957,7 @@ class Repair_Operator:
                             continue
 
                         
-                        new_route, feasable = self.task_insertion(route[:position], new_task_insertion, route[position:], tech, tasks, distances, data)
+                        new_route, feasable = self.task_insertion(route[:position], new_task_insertion, route[position:], tech, tasks, distances)
 
                         #new_route, new_cost, feasable = self.routeCost_and_feasability(new_route, tech, tasks, distances, data, restocking_nodes) 
                         
@@ -990,11 +1037,15 @@ class ALNS_ALgorithm:
 
         self.tasks = {}
         self.technicians = {}
+        self.unassigned_tasks = []
 
         self.distances: Distances
+        self.shops: Shop
+        self.depots: Depot
+        
 
 
-    def readData(self):
+    def readData(self): # ***
         path = urls.taskFilePath
         with open(path) as f:
             reader = csv.DictReader(f, delimiter=';')
@@ -1020,37 +1071,63 @@ class ALNS_ALgorithm:
 
         f.close()
 
+        """
+        path = urls.shopFilePath
+        with open(path) as f:
+            reader = csv.DictReader(f, delimiter=';')
+            for row in reader:
+                shop_id = int(row["id"])
+                self.shops[shop_id] = Shop(row)  
+        f.close()
+
+        path = urls.depotFilePath
+        with open(path) as f:
+            reader = csv.DictReader(f, delimiter=';')
+            for row in reader:
+                depot_id = int(row["id"])
+                self.depots[depot_id] = Depot(row)  
+        f.close()
+        """
+
         
-    def construct(self):
+    def construct(self): # ***
+        self.distances = self.distances.add_coords(NodeType.TASK, self.tasks)
+        self.distances = self.distances.add_coords(NodeType.TECH, self.technicians)
+        #?self.distances = self.distances.add_coords(NodeType.DEPOT, self.tasks)
+        #?self.distances = self.distances.add_coords(NodeType.SHOP, self.tasks)
+
+
         self.new_solution = Solution(self.technicians)
+
+
         for master_id, route in self.new_solution.routes.items():
             for i in range(len(self.technicians[master_id].start_tw)):
                 route.append(Route_Node(NodeType.TECH, master_id, start_time=None, end_time=self.technicians[master_id].start_tw[i]))
                 route.append(Route_Node(NodeType.TECH, master_id, start_time=self.technicians[master_id].end_tw[i], end_time=None)) 
         
-        task_ids = self.tasks.keys()
+        task_ids = list(self.tasks.keys())
         random.shuffle(task_ids)
-        unassigned_tasks = []
+        
         # * fill routes with tech home and home for every time window
         
         for id in task_ids:
-            unassigned_tasks.append(Route_Node(NodeType.TASK, id, start_time=None, end_time=None))
+            self.unassigned_tasks.append(Route_Node(NodeType.TASK, id, start_time=None, end_time=None))
         ###! Greedy, have to finish operators first
-        self.new_solution = self.operators.repair(self.new_solution, unassigned_tasks, self.technicians, self.tasks, self.distances)
-        self.best_solution = self.new_solution
-        self.current_solution = self.new_solution
+        self.new_solution, self.unassigned_tasks = self.operators.repair(self.new_solution, self.unassigned_tasks, self.technicians, self.tasks, self.distances, self.data, [self.shops, self.depots])
+        self.best_solution = deepcopy(self.new_solution)
+        self.current_solution = deepcopy(self.new_solution)
 
 
-    def selectOperators(self):
+    def selectOperators(self): # ***
         self.operators.roulette()
 
 
-    def generateNewSolution(self):
-        self.new_solution = self.operators.destroy(self.current_solution)
-        self.new_solution = self.operators.repair(self.new_solution)
+    def generateNewSolution(self): # ***
+        self.new_solution, self.unassigned_tasks = self.operators.destroy(self.current_solution, self.unassigned_tasks)
+        self.new_solution, self.unassigned_tasks = self.operators.repair(self.new_solution, self.unassigned_tasks, self.technicians, self.tasks, self.distances, self.data, [self.shops, self.depots])
         
 
-    def acceptSimulatedAnnealingFunction(self):
+    def acceptSimulatedAnnealingFunction(self): # ***
         if self.new_solution.totalMonetaryCost < self.current_solution.totalMonetaryCost:
             return True
 
@@ -1060,16 +1137,19 @@ class ALNS_ALgorithm:
         return random.random() < prob
 
 
-    def updateWeights(self, score):
-        self.operators.renew_weights(score)
+    def updateWeights(self): # ***
+        self.operators.renew_weights(self.score)
 
 
     def initialize(self):
-        self.readData()
-        self.construct()
+        self.readData() # *
+        self.construct() # *
 
         start_time = time()
         while time() - start_time <= self.run_time:
+            pass
+
+        for i in range(1):
             self.selectOperators()
             
             self.generateNewSolution()
@@ -1089,6 +1169,15 @@ class ALNS_ALgorithm:
             self.updateWeights()
             self.simulatedAnnealing_temperature *= self.simulatedAnnealing_cooling
 
+        return self.best_solution
+
 
     def __str__(self, row):
         pass
+
+
+def __main__():
+    algorithm = ALNS_ALgorithm()
+    solution = ALNS_ALgorithm.initialize()
+
+    
