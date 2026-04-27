@@ -52,13 +52,13 @@ class Task:
         self.start_tw = (datetime.datetime.fromisoformat(str(row["start_tw"])))
         self.end_tw = (datetime.datetime.fromisoformat(str(row["end_tw"])))
         self.duration = int(row["duration"])
-        self.created = int(row["created"])
+        self.created = (datetime.datetime.fromisoformat(str(row["created"])))
 
-        self.lat = float(row["home_lat"])
-        self.long = float(row["home_long"])
-
-    def __str__(self, row):
-        pass
+        self.lat = float(row["lat"])
+        self.long = float(row["long"])
+        self.location = self.lat, self.long
+    def __str__(self):
+        return f"{self.id} {self.skills} {self.duration} {self.priority} {self.start_tw} {self.end_tw} {self.location}"
 
 
 class Technician:## ! resources is not set to master_id but to id, so resources do not go from one day to next day 
@@ -79,8 +79,8 @@ class Technician:## ! resources is not set to master_id but to id, so resources 
         #!self.created = int(row["created"])
         #!self.new_start_tw = 0
 
-    def __str__(self, row):
-        pass
+    def __str__(self):
+        return f"{self.master_id} {self.skills} {self.start_tw} {self.end_tw} {self.home}"
 
 class Depot:
     def __init__(self, row):
@@ -162,12 +162,12 @@ class Distances:
         self.distances[(b,a)] = distance
 
 
-    def __str__(self, row):
+    def __str__(self):
         pass
 
 
 class Weather: 
-    def __init__(self, row):
+    def __init__(self):
         self.average = 160.932
         self.sunshine = 197.624
         self.rain = 226.109
@@ -187,25 +187,25 @@ class Weather:
             return self.average
     
 
-    def __str__(self, row):
+    def __str__(self):
         pass
 
 
 class Solution: 
     def __init__(self, technicians):
-        self.tech_map = {t.master_id: t for t in technicians}
+        self.tech_map = {t.master_id: t for t in technicians.values()}
         #!self.master_ids = {t.id: t.master_id for t in technicians} 
 
-        self.routes = {t.master_id: [] for t in technicians} 
-        self.changedRoute = {t.master_id: False for t in technicians} # checks if there is need to recalculate costs and incomes
+        self.routes = {t.master_id: [] for t in technicians.values()} 
+        self.changedRoute = {t.master_id: False for t in technicians.values()} # checks if there is need to recalculate costs and incomes
         self.task_costs = dict[int,float]
 
-        self.monetaryCost = {t.master_id: 0.0 for t in technicians} #total cost per technician
-        self.pathCost = {t.master_id: 0.0 for t in technicians} #driving (cost for path)
-        self.timeCost = {t.master_id: 0.0 for t in technicians} #work (both for driving and work)
-        self.weatherCost = {t.master_id: 0.0 for t in technicians} #security (total cost for technician in all types of weather)
-        self.resourcesCost = {t.master_id: 0.0 for t in technicians} #costs of resources used
-        self.income = {t.master_id: 0.0 for t in technicians} #total income per tasks for technician
+        self.monetaryCost = {t.master_id: 0.0 for t in technicians.values()} #total cost per technician
+        self.pathCost = {t.master_id: 0.0 for t in technicians.values()} #driving (cost for path)
+        self.timeCost = {t.master_id: 0.0 for t in technicians.values()} #work (both for driving and work)
+        self.weatherCost = {t.master_id: 0.0 for t in technicians.values()} #security (total cost for technician in all types of weather)
+        self.resourcesCost = {t.master_id: 0.0 for t in technicians.values()} #costs of resources used
+        self.income = {t.master_id: 0.0 for t in technicians.values()} #total income per tasks for technician
 
         self.totalMonetaryCost = 0.0
         self.totalPathCost = 0.0
@@ -220,7 +220,7 @@ class Solution:
     def copy(self):
         new_solution = Solution.__new__(Solution)
         new_solution.tech_map = self.tech_map
-        new_solution.master_ids = self.master_ids
+        #!new_solution.master_ids = self.master_ids
 
         new_solution.routes = self.routes.copy()
         new_solution.changedRoute = self.changedRoute.copy()
@@ -242,7 +242,6 @@ class Solution:
         new_solution.data = self.data
         return new_solution
     
-    def add_taskToRoute(self, tech_id, task_id, position):
 
         pass
 
@@ -273,7 +272,7 @@ class Solution:
                 route = routes[tech_id]
                 ##for technician_id, route in routes.items():
                 for node in route:
-                    next_route_position = node
+                    next_route_position =  Distance_Node(node.node_type, node.id)
                     cost_driveToTask = distances.get_distance(current_tech_position, next_route_position) 
                     cost_drive += cost_driveToTask
                     
@@ -338,7 +337,7 @@ class Solution:
         return Solution(deepcopy(self.routes))
 
 
-    def __str__(self, row):
+    def __str__(self):
         masterID_list = []
         tech_id_list = []
         for master_id, route in self.routes.items():
@@ -354,7 +353,7 @@ class Solution:
 
 
 class Operators: 
-    def __init__(self, row):
+    def __init__(self):
         self.destroy_ops = Destroy_Operator()
         self.repair_ops = Repair_Operator()
         
@@ -423,12 +422,12 @@ class Operators:
     def updateScore(self,new_score):
         self.score = new_score
 
-    def __str__(self, row):
+    def __str__(self):
         pass
 
 
 class Destroy_Operator: 
-    def __init__(self, row):
+    def __init__(self):
         pass
     
 
@@ -575,15 +574,16 @@ class Destroy_Operator:
 class Repair_Operator: 
     def __init__(self):
         pass
-    def assign_feasability(task, tech, distances): # skills and time_windows
+    def assign_feasability(self, task, tech, distances): # skills and time_windows
         can_assign = False
+        
 
         for skill in task.skills:
             if not skill in tech.skills:
                 return can_assign
         
-        travel_time = distances.getDistance(Distance_Node(NodeType.TECH,tech.master_id),Distance_Node(NodeType.TASK,task.id))
-        travel_time_home = distances.getDistance(Distance_Node(NodeType.TASK,task.id),Distance_Node(NodeType.TECH,tech.master_id))
+        travel_time = distances.get_distance(Distance_Node(NodeType.TECH,tech.master_id),Distance_Node(NodeType.TASK,task.id))
+        travel_time_home = distances.get_distance(Distance_Node(NodeType.TASK,task.id),Distance_Node(NodeType.TECH,tech.master_id))
         for i in range(len(tech.start_tw)):
             tech_arrives_before_end_of_task = tech.start_tw[i] + datetime.timedelta(minutes=travel_time) + datetime.timedelta(minutes=task.duration)
             if  tech_arrives_before_end_of_task > task.end_tw + TASK_OVERTIME:
@@ -598,47 +598,61 @@ class Repair_Operator:
 
         return can_assign
 
-    def timeWindow_feasability(nodes, tech, distances, tasks):
+    def timeWindow_feasability(self, nodes, tech, distances, tasks):
         for i in range(len(tech.start_tw)):
+            node_0 = Distance_Node(nodes[0].node_type, nodes[0].id)
+            node_1 = Distance_Node(nodes[1].node_type, nodes[1].id)
+            node_2 = Distance_Node(nodes[2].node_type, nodes[2].id)
             if nodes[0].node_type == NodeType.TASK:
                 start_time_0 = tasks[nodes[0].id].start_tw
-                duration_0 = tasks[nodes[0].id].duration + TECH_REST
+                duration_0 = datetime.timedelta(minutes=tasks[nodes[0].id].duration) + TECH_REST
             
             else:
                 start_time_0 = tech.start_tw[i]
-                duration_0 = 0
+                duration_0 = datetime.timedelta(minutes=0)
 
-            travelTime0_1 = distances.get_distance(nodes[0], nodes[1])
+            travelTime0_1 = distances.get_distance(node_0, node_1)
 
             end_tw_1 = tasks[nodes[1].id].end_tw
             duration_1 = tasks[nodes[1].id].duration
+
+            
+            travelTime0_1 = datetime.timedelta(minutes=travelTime0_1)
+            duration_1 = datetime.timedelta(minutes=duration_1)
 
             if start_time_0 + duration_0 + travelTime0_1 + duration_1 <= end_tw_1 + TASK_OVERTIME:
                 pass
             else:
                 continue
             
-            travelTime1_2 = distances.get_distance(nodes[1], nodes[2])
+            travelTime1_2 = distances.get_distance(node_1, node_2)
+
+            travelTime1_2 = datetime.timedelta(minutes=travelTime1_2)
 
             if nodes[2].node_type == NodeType.TASK:
                 end_tw_2 = tasks[nodes[2].id].end_tw
-                duration_2 = tasks[nodes[2].id].duration + TECH_REST
+                duration_2 = datetime.timedelta(minutes=(tasks[nodes[2].id].duration)) + TECH_REST
                 
                 if end_tw_1 + duration_1 + travelTime1_2 + duration_2 <= end_tw_2 + TASK_OVERTIME:
                     return True
             
             else:
                 end_tw_2 = tech.end_tw[i]
-                duration_2 = 0
+                duration_2 = datetime.timedelta(minutes=0)
                 
                 if end_tw_1 + duration_1 + travelTime1_2 + duration_2 <= end_tw_2 + TECH_OVERTIME:
                     return True
 
         return False
     
-    def insertion_feasability(prev_nodes, insertion_node, next_nodes, tech, tasks, distances, insertionCehck=False):
+    def insertion_feasability(self, prev_nodes, insertion_node, next_nodes, tech, tasks, distances, insertionCehck=False):
         # * where it gets the end? #! what if it is TECH node, that does not have end time # * tech end has end_time whihc is start of tw
-        end_task = prev_nodes[-1].end_time 
+        last_prev_node = len(prev_nodes)-1
+        #print()
+        #print()
+        #print()
+        #print(prev_nodes)
+        end_task = prev_nodes[last_prev_node].end_time 
         ### ! i do use the newly inserted route, hwoever it has no start or end...
         ### ! inserted goes further and tries to rebuild whihc is fine.
         ### ! do both shop and task insertion at same time
@@ -646,55 +660,65 @@ class Repair_Operator:
         ### ! what if technician goes to depo/shop in his free time windwo and nothing else in that day prep for next day?
 
         # ! add weather
-        travel_end_insertion = distances(Distance_Node(prev_nodes[-1].node_type, prev_nodes[-1].id), Distance_Node(insertion_node.node_type, insertion_node.id))
+        travel_end_insertion = distances.get_distance(Distance_Node(prev_nodes[-1].node_type, prev_nodes[-1].id), Distance_Node(insertion_node.node_type, insertion_node.id))
         
 
         insertion_duration = datetime.timedelta(minutes=0)
         insertion_node_end = datetime.timedelta(minutes=0)
-        
+        travel_end_insertion = datetime.timedelta(minutes=travel_end_insertion)
 
         if insertion_node.node_type is NodeType.TASK:
             insertion_node_start = max(end_task + travel_end_insertion, tasks[insertion_node.id].start_tw) # *
-            insertion_duration = datetime.timedelta(minutes=int(insertion_node.duration)) # *
+            insertion_duration = datetime.timedelta(minutes=int(tasks[insertion_node.id].duration)) # *
             insertion_node_end = insertion_node_start + insertion_duration # * overtime?
-            insertion_overtime = insertion_node.end_tw - insertion_node_end
+            insertion_overtime = tasks[insertion_node.id].end_tw - insertion_node_end
             if insertion_overtime > TASK_OVERTIME:
                 return [], False
 
-        if insertion_node.node_type is NodeType.SHOP:
+        elif insertion_node.node_type is NodeType.SHOP:
             insertion_node_start = end_task + travel_end_insertion
             insertion_duration =  SHOP_DURATION
             insertion_node_end = insertion_node_start + insertion_duration
             
-        if insertion_node.node_type is NodeType.DEPOT:
+        elif insertion_node.node_type is NodeType.DEPOT:
             insertion_node_start = end_task + travel_end_insertion
             insertion_duration = DEPOT_DURATION
             insertion_node_end = insertion_node_start + insertion_duration
-            
+        else:
+            print(insertion_node)
+            print("error?")
+
         # * all technician homes from and to are inserted at construction
         # ! SHOP AND DEPOT does not have time_window
+        #print(insertion_node_start)
+        #print(insertion_node_end)
         if next_nodes[0].node_type is NodeType.TECH: # depends if it is last node or not or maybe just should somehow work with this in a different way
-            next_task_start_feasability = tech.end_tw + TECH_OVERTIME
+            for i in range(len(tech.start_tw)):
+                if tech.start_tw[i] < insertion_node_start and tech.end_tw[i] < insertion_node_start:
+                    next_task_start_feasability = tech.end_tw[i] + TECH_OVERTIME
 
         if next_nodes[0].node_type is NodeType.TASK:
             next_task_start_feasability = tasks[next_nodes[0].id].end_tw + TASK_OVERTIME
             next_task_duration = tasks[next_nodes[0].id].duration 
+            next_task_duration = datetime.timedelta(minutes=next_task_duration)
 
         # ! add weather 
-        travel_insertion_next = distances(Distance_Node(insertion_node.node_type, insertion_node.id),Distance_Node(next_nodes[0].node_type, next_nodes[0].id))
+        travel_insertion_next = distances.get_distance(Distance_Node(insertion_node.node_type, insertion_node.id),Distance_Node(next_nodes[0].node_type, next_nodes[0].id))
         
+        travel_insertion_next = datetime.timedelta(minutes=travel_insertion_next)
+
         if next_nodes[0].start_time is not None:
             start_next_node = next_nodes[0].start_time
         else: 
             start_next_node = max(tasks[next_nodes[0].id].start_tw, insertion_node_end + travel_insertion_next)
 
+        
                                   
         if insertionCehck: #! in full rebuild after building the route up to new insertion could just stop if next step can be done
             if insertion_node_end + travel_insertion_next < start_next_node:
                 insertion_node.start_time = insertion_node_start
                 insertion_node.end_time = insertion_node_end
-
-                return [prev_nodes, insertion_node, next_nodes], True
+                return prev_nodes + [insertion_node] + next_nodes, True
                
         # ! building route not checking
         if next_nodes[0].node_type == NodeType.TASK:
@@ -702,48 +726,71 @@ class Repair_Operator:
                 insertion_node.start_time = insertion_node_start
                 insertion_node.end_time = insertion_node_end
 
-                return [prev_nodes, insertion_node, next_nodes], True
+                return prev_nodes + [insertion_node] + next_nodes, True
         
         elif next_nodes[0].node_type == NodeType.TECH:
             if insertion_node_end + travel_insertion_next < next_task_start_feasability:
                 insertion_node.start_time = insertion_node_start
                 insertion_node.end_time = insertion_node_end
 
-                return [prev_nodes, insertion_node, next_nodes], True
+                return prev_nodes + [insertion_node] + next_nodes, True
         else:
             insertion_node.start_time = insertion_node_start
             insertion_node.end_time = insertion_node_end
 
-            return [prev_nodes, insertion_node, next_nodes], True
+            return prev_nodes + [insertion_node] + next_nodes, True
 
         return [], False
 
 
-    def rightSide_twCheck(node, task):
+    def rightSide_twCheck(self, node, task):
         if task.end_tw + TASK_OVERTIME == node.end_time:
             return True
         return False
 
 
     def task_insertion(self, prev_nodes, insertion_task, next_nodes, tech, tasks, distances):
-        new_route, feasable = self.insertion_feasability(prev_nodes, insertion_task, next_nodes, tech, tasks, distances)
+        new_route, feasable = self.insertion_feasability(prev_nodes, insertion_task, next_nodes, tech, tasks, distances, True)
 
         if not feasable: #! rebuilding whole route
             # ! should consider if both sides need rebuilding or can only left side or right side
             
             insertion_index = len(prev_nodes)
             # ! if ends at end_tw + overtime then on right side can't change anything 
-        
-            if self.rightSide_twCheck(prev_nodes[insertion_index-1], tasks[prev_nodes[insertion_index-1].id]): #! unless it is technician
-                new_route, feasable = self.insertion_feasability(prev_nodes[-1], insertion_task, next_nodes[0], tech, tasks, distances)
-                route = [insertion_task] + next_nodes
-                for i in range(len(route)-1):
-                    new_route, feasable = self.insertion_feasability(route[i], route[i+1], route[i+2], tech, tasks, distances)
-                    
+            #print("insertion_index ", insertion_index)
+            #print("prev_nodes[insertion_index-1] ", prev_nodes[insertion_index-1])
+            
+            is_technician = False
+            if prev_nodes[insertion_index-1].node_type == NodeType.TECH:
+                prev_node = tech
+                is_technician = True
             else:
+                #print(tasks[prev_nodes[insertion_index-1].id])
+                prev_node = tasks[prev_nodes[insertion_index-1].id]
+
+            not_right_side = False
+            if not is_technician: 
+                if self.rightSide_twCheck(prev_nodes[insertion_index-1], prev_node): #! unless it is technician
+                    new_route, feasable = self.insertion_feasability(prev_nodes[-1], insertion_task, next_nodes[0], tech, tasks, distances)
+                    route = [prev_nodes[-1]]+[insertion_task] + next_nodes
+                    for i in range(len(route)-2):
+                        new_route, feasable = self.insertion_feasability([route[i]], route[i+1], [route[i+2]], tech, tasks, distances)
+                        route = new_route
+                else:
+                    not_right_side =True
+
+            if not_right_side:
                 route = prev_nodes + [insertion_task] + next_nodes
-                for i in range(len(route)-1): # * 0 1 2 3 4
-                    new_route, feasable = self.insertion_feasability(route[i], route[i+1], route[i+2], tech, tasks, distances)
+                #print(route)
+                for i in range(len(route)-2): # * 0 1 2 3 4
+                    if i+2 < len(route)-1:
+                        break
+                    if i+1 < len(route)-1:
+                        break
+                    if route[i+1].node_type == NodeType.TECH:
+                        continue
+                    new_route, feasable = self.insertion_feasability([route[i]], route[i+1], [route[i+2]], tech, tasks, distances)
+                    route = new_route
                 
 
         if not feasable:
@@ -928,35 +975,45 @@ class Repair_Operator:
             """
             # resources
 
+    def calculateRouteCost(self, route, distances, tasks):
+        
+        return 1000.0
 
     def greedy(self, solution, unassigned_tasks, technicians, tasks, distances, data, restocking_nodes):
         new_solution = solution.copy()
-
+        indx = 0
         unfeasable_tasks = []
-        
+        removable_tasks = []
         while unassigned_tasks: ### set itteration count for stopping inf loop, ### no infinite loop because of pop
             candidates = []
-            for task_id in unassigned_tasks:
-                for tech in technicians:
-                    if not self.assign_feasability(tasks[task_id], tech, distances): ### Checks if skills and time_window is within limits
+            for task in unassigned_tasks:
+                for tech_id, tech in technicians.items():
+                    #print("AAAAAAAAAAAAAAAAAA: ", tech)
+                    if not self.assign_feasability(tasks[task.id], tech, distances): ### Checks if skills and time_window is within limits
                         continue
 
-                    route = new_solution.routes[tech.master_id]
+                    
                     old_cost = new_solution.monetaryCost[tech.master_id]
-                    new_task_insertion = Route_Node(NodeType.TASK, task_id, start_time=None, end_time=None)
-                    for position in range(len(route) - 1): 
+                    new_task_insertion = Route_Node(NodeType.TASK, task.id, start_time=None, end_time=None)
+                    for position in range(len(new_solution.routes[tech.master_id]) - 2): 
+                        route = deepcopy(new_solution.routes[tech.master_id])
+                        position += 1
                         ### * does not consider that task insertion can happen so that technciian starts task and all future tasks get ignored because current one takes too long
                         ### * does not consider if there is any available time (min duration of task)
                         ### * does not consider tech start home and end home
                         if route[position].node_type in [NodeType.SHOP, NodeType.DEPOT]:
                             continue
+                        #print()
                         if route[position+1].node_type in [NodeType.SHOP, NodeType.DEPOT]:
                             continue
                         
                         if not self.timeWindow_feasability([route[position], new_task_insertion, route[position+1]], tech, distances, tasks):
                             continue
 
-                        
+                        #print()
+                        #print("positoni:", position)
+                        #print(route[:position])
+                        #print(route[position:])
                         new_route, feasable = self.task_insertion(route[:position], new_task_insertion, route[position:], tech, tasks, distances)
 
                         #new_route, new_cost, feasable = self.routeCost_and_feasability(new_route, tech, tasks, distances, data, restocking_nodes) 
@@ -965,24 +1022,32 @@ class Repair_Operator:
                         if not feasable:
                             continue
                         
-                        new_route.updateCosts_Income(distances,tasks)
+
                         
-                        new_cost = new_route.totalMonetaryCost 
+                        new_cost = self.calculateRouteCost(new_route, distances, tasks) 
 
                         difference = new_cost - old_cost 
-                        candidates.append((difference, tech.master_id, position, task_id))
+                        candidates.append((difference, new_route, tech.master_id, position, task.id))
 
-            if not candidates:
-                unfeasable_tasks.append(unassigned_tasks.pop(0))
-                continue
+                if not candidates:
+                    unfeasable_tasks.append(task)
+                    removable_tasks.append(task)
+
+            indx += 1
+            print(indx)
+            for task in removable_tasks:
+                unassigned_tasks = [t for t in unassigned_tasks if t.id != task.id]
 
             candidates.sort(key=lambda x: x[0])
 
             chosen = candidates[0]
-            _, tech_id, pos, task_id = chosen
+            _, new_route, tech_id, pos, task_id = chosen
 
-            new_solution.add_task(tech_id, task_id, pos)
-            unassigned_tasks.remove(task_id)
+            new_solution.routes[tech_id] = new_route
+            new_solution.changedRoute[tech_id] = True
+
+
+            unassigned_tasks = [t for t in unassigned_tasks if t.id != task_id]
 
             
         return new_solution, unfeasable_tasks
@@ -1017,7 +1082,7 @@ class Repair_Operator:
 
         return new_solution, unfeasable_tasks
     
-    def __str__(self, row):
+    def __str__(self):
         pass
 
 
@@ -1039,9 +1104,10 @@ class ALNS_ALgorithm:
         self.technicians = {}
         self.unassigned_tasks = []
 
-        self.distances: Distances
-        self.shops: Shop
-        self.depots: Depot
+        self.distances = Distances()
+        self.shops = {}
+        self.depots = {}
+        self.data = Resource_Data()
         
 
 
@@ -1091,8 +1157,9 @@ class ALNS_ALgorithm:
 
         
     def construct(self): # ***
-        self.distances = self.distances.add_coords(NodeType.TASK, self.tasks)
-        self.distances = self.distances.add_coords(NodeType.TECH, self.technicians)
+
+        self.distances.add_coords(NodeType.TASK, self.tasks)
+        self.distances.add_coords(NodeType.TECH, self.technicians)
         #?self.distances = self.distances.add_coords(NodeType.DEPOT, self.tasks)
         #?self.distances = self.distances.add_coords(NodeType.SHOP, self.tasks)
 
@@ -1102,8 +1169,8 @@ class ALNS_ALgorithm:
 
         for master_id, route in self.new_solution.routes.items():
             for i in range(len(self.technicians[master_id].start_tw)):
-                route.append(Route_Node(NodeType.TECH, master_id, start_time=None, end_time=self.technicians[master_id].start_tw[i]))
-                route.append(Route_Node(NodeType.TECH, master_id, start_time=self.technicians[master_id].end_tw[i], end_time=None)) 
+                route.append(Route_Node(NodeType.TECH, master_id, start_time=self.technicians[master_id].start_tw[i], end_time=self.technicians[master_id].start_tw[i]))
+                route.append(Route_Node(NodeType.TECH, master_id, start_time=self.technicians[master_id].end_tw[i], end_time=self.technicians[master_id].end_tw[i])) 
         
         task_ids = list(self.tasks.keys())
         random.shuffle(task_ids)
@@ -1112,6 +1179,7 @@ class ALNS_ALgorithm:
         
         for id in task_ids:
             self.unassigned_tasks.append(Route_Node(NodeType.TASK, id, start_time=None, end_time=None))
+        print(self.new_solution)
         ###! Greedy, have to finish operators first
         self.new_solution, self.unassigned_tasks = self.operators.repair(self.new_solution, self.unassigned_tasks, self.technicians, self.tasks, self.distances, self.data, [self.shops, self.depots])
         self.best_solution = deepcopy(self.new_solution)
@@ -1144,7 +1212,8 @@ class ALNS_ALgorithm:
     def initialize(self):
         self.readData() # *
         self.construct() # *
-
+        return self.best_solution
+    
         start_time = time()
         while time() - start_time <= self.run_time:
             pass
@@ -1172,12 +1241,13 @@ class ALNS_ALgorithm:
         return self.best_solution
 
 
-    def __str__(self, row):
+    def __str__(self):
         pass
 
 
-def __main__():
+if __name__ == "__main__":
     algorithm = ALNS_ALgorithm()
-    solution = ALNS_ALgorithm.initialize()
+    solution = algorithm.initialize()
+    print(solution)
 
     
