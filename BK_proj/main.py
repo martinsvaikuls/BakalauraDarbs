@@ -18,6 +18,8 @@ import urls
 VANSIZE = 120
 TASK_OVERTIME = datetime.timedelta(minutes=15)
 TECH_OVERTIME = datetime.timedelta(minutes=60)
+TECH_LAST_TASK = datetime.timedelta(hours=16)
+
 TECH_REST = datetime.timedelta(minutes=10) # rest_inbetween tasks
 
 SHOP_DURATION = datetime.timedelta(minutes=10)
@@ -778,8 +780,114 @@ class Repair_Operator:
 
         return insertion_node_start, insertion_duration, insertion_node_end, insertion_overtime
     
+    def one_nodeInsertion(self, prev_nodes, insertion_node, next_nodes, tech, tasks, distances):
+        last_prev_node = len(prev_nodes)-1
+        end_task = prev_nodes[last_prev_node].end_time 
+       
+        travel_end_to_insertion = distances.get_distance(Distance_Node(prev_nodes[-1].node_type, prev_nodes[-1].id), Distance_Node(insertion_node.node_type, insertion_node.id))
 
-    def insertion_feasability(self, prev_nodes, insertion_node, next_nodes, tech, tasks, distances, insertionCehck=False):
+        insertion_node_start, insertion_duration, insertion_node_end, insertion_overtime = self.insertionStartDurationEnd(insertion_node, tasks[insertion_node.id], end_task, travel_end_to_insertion)
+
+        travel_insertion_to_next = distances.get_distance(Distance_Node(insertion_node.node_type, insertion_node.id),Distance_Node(next_nodes[0].node_type, next_nodes[0].id))
+        travel_insertion_to_next = datetime.timedelta(minutes=travel_insertion_to_next)
+        start_next_node = next_nodes[0].start_time
+
+
+        if insertion_overtime > TASK_OVERTIME:
+            return [], False
+        if prev_nodes[-1].start_time.time() >= datetime.time(16, 0):
+            #print((insertion_node_end + travel_insertion_to_next).time())
+            #print((insertion_node_end + travel_insertion_to_next).time() > datetime.time(17, 0))
+            if (insertion_node_end + travel_insertion_to_next).time() > datetime.time(17, 0):
+                return [], False
+            elif (insertion_node_end + travel_insertion_to_next).time() < datetime.time(16, 0):
+                return [], False
+        
+
+        if  prev_nodes[-1].start_time.date() == next_nodes[0].start_time.date():
+            if insertion_node_start.date() != prev_nodes[-1].end_time.date():
+                return [], False
+            # prev 400-500
+            # insertino 600-800
+            # next 900-1000
+            #! insert before next task starts
+
+            #if next_nodes[0].node_type == NodeType.TECH:
+            if (insertion_node_end + travel_insertion_to_next+TECH_REST).time() >= (start_next_node).time(): # 800 < 900
+                return [], False
+            if (insertion_node_start+TECH_REST).time() >= (start_next_node).time(): # 600 < 900
+                return [], False
+            #if prev_nodes[-1].node_type == NodeType.TECH:
+            if (insertion_node_end + travel_insertion_to_next-TECH_REST).time() <= (end_task).time(): # 800 > 500
+                return [], False
+            #! insert after previous task ends
+            if (insertion_node_start+TECH_REST).time() <= (end_task).time(): # 600 > 500
+                return [], False
+
+            
+        if  prev_nodes[-1].start_time.date() != next_nodes[0].start_time.date():
+            if prev_nodes[-1].start_time.time() < datetime.time(15, 0):
+                return [], False
+                
+        #! in full rebuild after building the route up to new insertion could just stop if next step can be done
+        
+       
+        
+        
+        if prev_nodes[-1].node_type != NodeType.TECH and next_nodes[0].node_type != NodeType.TECH:
+            #print(end_task.time(), insertion_node_start.time(), insertion_node_end.time(), start_next_node.time(), end_task.time() < insertion_node_start.time(), insertion_node_end.time() < start_next_node.time(), insertion_node_end.date(), start_next_node.date())
+            if not (end_task.time() < insertion_node_start.time()) or not(insertion_node_end.time() < start_next_node.time()):
+                #print(end_task.time(), insertion_node_start.time(), insertion_node_end.time(), start_next_node.time(), end_task.time() < insertion_node_start.time(), insertion_node_end.time() < start_next_node.time(), insertion_node_end.date(), start_next_node.date())
+                pass
+        #print()
+        insertion_node.start_time = insertion_node_start
+        insertion_node.end_time = insertion_node_end
+
+        new_route = prev_nodes + [insertion_node] + next_nodes
+        printing = False
+        prev =  len(prev_nodes)-1
+        next =  len(prev_nodes)+1
+        
+        if printing:
+            if new_route[prev].node_type == NodeType.TASK or new_route[next].node_type == NodeType.TASK:
+                
+                #if (new_route[prev].start_time- insertion_node_start).total_seconds() <300 and (new_route[prev].start_time- insertion_node_start).total_seconds() > -301:
+                    #print((new_route[prev].start_time- insertion_node_start).total_seconds())
+                for node in new_route:
+                    if node.node_type == NodeType.TASK:
+                        print("AAAAAAAAA: ", node.node_type, node.id, node.start_time, node.end_time)
+                    else:
+                        print(node.node_type, node.id, node.start_time, node.end_time)
+                
+                
+                print(prev_nodes[-1].id, insertion_node.id, new_route[next].id, end_task.time(), insertion_node_start.time(), insertion_node_end.time(), start_next_node.time(), end_task.time() < insertion_node_start.time(), insertion_node_end.time() < start_next_node.time(), insertion_node_end.date(), start_next_node.date())
+                print(new_route[prev].id, insertion_node.id, new_route[next].id, new_route[prev].end_time.time(), insertion_node_start.time(), insertion_node_end.time(), new_route[next].start_time.time(), new_route[next].end_time.time() < insertion_node_start.time(), insertion_node_end.time() < new_route[next].start_time.time(), insertion_node_end.date(), new_route[next].start_time.date())
+                print()
+                print()
+            if end_task.time() > datetime.time(7, 15) and start_next_node.time() < datetime.time(16, 0) and end_task.time() != datetime.time(16, 00) and start_next_node.time() != datetime.time(7, 15):
+            #if not (end_task.time() < insertion_node_start.time()) or not(insertion_node_end.time() < start_next_node.time()):
+            #print(end_task.time(), insertion_node_start.time(), insertion_node_end.time(), start_next_node.time(), end_task.time() < insertion_node_start.time(), insertion_node_end.time() < start_next_node.time(), insertion_node_end.date(), start_next_node.date())
+                pass
+            if insertion_node_start.time() == datetime.time(7, 30):
+                #print(prev_nodes[-1].id, insertion_node.id, next_nodes[-1].id, end_task.time(), insertion_node_start.time(), insertion_node_end.time(), start_next_node.time(), end_task.time() < insertion_node_start.time(), insertion_node_end.time() < start_next_node.time(), insertion_node_end.date(), start_next_node.date())
+                pass
+
+
+
+        return new_route, True
+        
+
+        #if insertion_node_start > prev_nodes[last_prev_node].end_time:
+        #    if insertion_node_end + travel_insertion_to_next < start_next_node:
+                #if next_nodes[0].node_type != NodeType.TECH:
+                #    if insertion_node_start < prev_nodes[-1].end_time:
+                #        if insertion_node_start.date() == prev_nodes[-1].end_time.date():
+                
+            
+        #return [], False
+        
+        
+    def insertion_feasability(self, prev_nodes, insertion_node, next_nodes, tech, tasks, distances):
         # * where it gets the end? #! what if it is TECH node, that does not have end time # * tech end has end_time whihc is start of tw
         last_prev_node = len(prev_nodes)-1
         # tech 1600
@@ -798,31 +906,20 @@ class Repair_Operator:
         # ! add weather
         travel_end_to_insertion = distances.get_distance(Distance_Node(prev_nodes[-1].node_type, prev_nodes[-1].id), Distance_Node(insertion_node.node_type, insertion_node.id))
         
-        insertion_node_start, insertion_duration, insertion_node_end, insertion_overtime = self.insertionStartDurationEnd(insertion_node, tasks[insertion_node.id], end_task,travel_end_to_insertion)
+        insertion_node_start, insertion_duration, insertion_node_end, insertion_overtime = self.insertionStartDurationEnd(insertion_node, tasks[insertion_node.id], end_task, travel_end_to_insertion)
 
         if insertion_overtime > TASK_OVERTIME:
             return [], False
         
-        #if prev_nodes[-1].start_time < tasks[insertion_node.id].end_tw and tasks[insertion_node.id].end_tw < next_nodes[0].start_time: # !!!!!!!!!!
-        #    print(prev_nodes[-1].start_time, tasks[insertion_node.id].end_tw, next_nodes[0].start_time)
+
         # * all technician homes from and to are inserted at construction
         # ! SHOP AND DEPOT does not have time_window
-        #print(insertion_node_start)
-        #print(insertion_node_end)
         next_task_start_feasability = None
 
         if next_nodes[0].node_type is NodeType.TECH: # depends if it is last node or not or maybe just should somehow work with this in a different way
             next_task_start_feasability = next_nodes[0].start_time + TECH_OVERTIME
             if insertion_node_end - next_nodes[0].start_time > TECH_OVERTIME:
                 return [], False
-            """
-            for i in range(len(tech.start_tw)):
-                # 1000                  2000                        3000                            2000                 
-                if tech.start_tw[i] < insertion_node_start and insertion_node_end < tech.end_tw[i] + TECH_OVERTIME:
-                    #print("insert: ", tech.start_tw[i], insertion_node_start, insertion_node_end, tech.end_tw[i] + TECH_OVERTIME)
-                    next_task_start_feasability = tech.end_tw[i] + TECH_OVERTIME
-                    break
-            """
 
         if next_nodes[0].node_type is NodeType.TASK:
             next_task_start_feasability = tasks[next_nodes[0].id].end_tw + TASK_OVERTIME
@@ -835,44 +932,15 @@ class Repair_Operator:
         travel_insertion_to_next = distances.get_distance(Distance_Node(insertion_node.node_type, insertion_node.id),Distance_Node(next_nodes[0].node_type, next_nodes[0].id))
         travel_insertion_to_next = datetime.timedelta(minutes=travel_insertion_to_next)
 
-        
-        #if (next_nodes[0].start_time + TECH_OVERTIME).date()  > (tasks[insertion_node.id].end_tw).date():
-        #    return [], False
-
-        #if prev_nodes[-1].node_type == NodeType.TECH:
-        #    print(prev_nodes[-1].start_time, insertion_node_start, tasks[insertion_node.id].end_tw, insertion_node_end, insertion_node_end -  tasks[insertion_node.id].end_tw)
-        #if prev_nodes[-1].start_time < tasks[insertion_node.id].end_tw and tasks[insertion_node.id].end_tw < next_nodes[0].start_time: # !!!!!!!!!!
-        #    print(prev_nodes[-1].start_time, tasks[insertion_node.id].end_tw, next_nodes[0].start_time)
-        
-        #if insertion_node_end -  tasks[insertion_node.id].end_tw > TASK_OVERTIME:
-            #print("woof")
-            
-        #    return [], False
-        #else:
-            #print(prev_nodes[-1].start_time, insertion_node_start, tasks[insertion_node.id].end_tw, insertion_node_end, insertion_node_end -  tasks[insertion_node.id].end_tw)
-        
-        
+                
         if prev_nodes[last_prev_node].start_time < insertion_node_end and insertion_node_start < prev_nodes[last_prev_node].end_time:
             return [], False
         
         if next_nodes[0].start_time < insertion_node_start or insertion_node_end > next_nodes[0].end_time: #and insertion_node_start < next_nodes[0].end_time:
             return [], False
-        #if prev_nodes[last_prev_node].node_type  != NodeType.TECH:
-            #print(prev_nodes[last_prev_node].start_time, prev_nodes[last_prev_node].end_time, insertion_node_start, insertion_node_end,)
-        
-        
-        if insertionCehck: #! in full rebuild after building the route up to new insertion could just stop if next step can be done
-            if next_nodes[0].start_time is not None:
-                start_next_node = next_nodes[0].start_time
-            else: 
-                start_next_node = max(tasks[next_nodes[0].id].start_tw, insertion_node_end + travel_insertion_to_next)
-            if insertion_node_start > prev_nodes[last_prev_node].end_time:
-                if insertion_node_end + travel_insertion_to_next < start_next_node:
-                    insertion_node.start_time = insertion_node_start
-                    insertion_node.end_time = insertion_node_end
-                    return prev_nodes + [insertion_node] + next_nodes, True
-          
-        
+                
+
+        """
         # ! building route not checking
         if insertion_node_start > prev_nodes[last_prev_node].end_time:
             if next_nodes[0].node_type == NodeType.TASK:
@@ -897,7 +965,7 @@ class Repair_Operator:
                 insertion_node.end_time = insertion_node_end
 
                 return prev_nodes + [insertion_node] + next_nodes, True
-
+        """
         return [], False
 
 
@@ -909,8 +977,8 @@ class Repair_Operator:
 
     def task_insertion(self, prev_nodes, insertion_task, next_nodes, tech, tasks, distances):
         feasable = False
-        new_route, feasable = self.insertion_feasability(prev_nodes, insertion_task, next_nodes, tech, tasks, distances, True) #!
-        
+        new_route, feasable = self.one_nodeInsertion(prev_nodes, insertion_task, next_nodes, tech, tasks, distances) #!
+        """
         if not feasable: #! rebuilding whole route
             # ! should consider if both sides need rebuilding or can only left side or right side
             
@@ -932,12 +1000,14 @@ class Repair_Operator:
             if not is_technician: 
                 if self.leftSide_twCheck(prev_nodes[insertion_index-1], prev_node): #! unless it is technician
                     new_route, feasable = self.insertion_feasability(prev_nodes[-1], insertion_task, next_nodes[0], tech, tasks, distances) #!
-                    route = [prev_nodes[-1]]+[insertion_task] + next_nodes
+                    route = [prev_nodes[-1]] + [insertion_task] + next_nodes
                     for i in range(len(route)-2):
                         new_route, feasable = self.insertion_feasability([route[i]], route[i+1], [route[i+2]], tech, tasks, distances) #!
                         if not feasable:
                             break    
+
                         route = new_route
+                    #new_route = 
                 else:
                     not_right_side =True
             
@@ -955,7 +1025,7 @@ class Repair_Operator:
                     if  not feasable:
                         break
                     route = new_route
-                
+        """
 
         if not feasable:
             return [], False    
@@ -1212,10 +1282,15 @@ class Repair_Operator:
 
                 new_solution.routes[tech_id] = new_route
                 new_solution.changedRoute[tech_id] = True
-
-                #for node in new_route:
-                #    print(node.node_type, node.id, node.start_time, node.end_time)
-
+                printing = False
+                if printing:
+                    for node in new_route:
+                        if node.node_type == NodeType.TASK:
+                            print("AAAAAAAAA: ", node.node_type, node.id, node.start_time, node.end_time)
+                        else:
+                            print(node.node_type, node.id, node.start_time, node.end_time)
+                #if indx > 30:
+                #    time.sleep(3)
                 unassigned_tasks = [t for t in unassigned_tasks if t.id != task_id]
 
             
