@@ -3,7 +3,7 @@ import math
 import csv
 import ast
 import numpy as np
-
+import json
 import datetime
 import time
 
@@ -37,7 +37,7 @@ class Resource_Data:
             43: 19, 44: 19, 45: 19, 46: 19, 47: 19, 48: 19, 49: 19,
         }
         self.technician_workHourCost = 20
-
+        self.workHourCost = 20
         self.drivingHundredKMCost = 2.00*6
         self.drivingSpeedHr = 60
         self.drivingHourCost = self.drivingHundredKMCost*60/100
@@ -48,8 +48,8 @@ class Task:
         self.id = int(row["id"])
         self.skills = set(ast.literal_eval(row["skills"]))
         
-        self.resources = [ast.literal_eval(row["resources"])]
-        #!self.income = float(row["income"])
+        self.resources = ast.literal_eval(row["resources"])
+        self.income = float(row["income"])
         self.priority = int(row["priority"])
         self.start_tw = (datetime.datetime.fromisoformat(str(row["start_tw"])))
         self.end_tw = (datetime.datetime.fromisoformat(str(row["end_tw"])))
@@ -69,7 +69,7 @@ class Technician:## ! resources is not set to master_id but to id, so resources 
         self.master_id = int(row["master_id"])
         self.skills = set(ast.literal_eval(row["skills"]))
 
-        #!self.resources = dict(ast.literal_eval(row["resources"]))
+        self.resources = dict(ast.literal_eval(row["resources"]))
 
         self.start_tw = [datetime.datetime.fromisoformat(str(row["start_tw"]))]
         self.end_tw = [datetime.datetime.fromisoformat(str(row["end_tw"]))]
@@ -78,8 +78,6 @@ class Technician:## ! resources is not set to master_id but to id, so resources 
         self.long = float(row["home_long"])
         self.home = self.lat, self.long
 
-        #!self.created = int(row["created"])
-        #!self.new_start_tw = 0
 
     def __str__(self):
         return f"{self.master_id} {self.skills} {self.start_tw} {self.end_tw} {self.home}"
@@ -89,24 +87,29 @@ class Depot:
         self.id = int(row["id"])
         self.resources = dict(ast.literal_eval(row["resources"]))
 
-        self.start_tw = [datetime.datetime.fromisoformat(str(row["start_tw"]))]
-        self.end_tw = [datetime.datetime.fromisoformat(str(row["end_tw"]))]
+        self.start_tw = datetime.datetime.fromisoformat(str(row["start_tw"]))
+        self.end_tw = datetime.datetime.fromisoformat(str(row["end_tw"]))
 
-        self.lat = float(row["home_lat"])
-        self.long = float(row["home_long"])
+        self.lat = float(row["lat"])
+        self.long = float(row["long"])
+        self.location = self.lat, self.long
 
+    def __str__(self):
+        return f"{self.id}  {self.start_tw} {self.end_tw} {self.location}"
 
 class Shop:
     def __init__(self, row):
         self.id = int(row["id"])
         self.resources = dict(ast.literal_eval(row["resources"]))
 
-        self.start_tw = [datetime.datetime.fromisoformat(str(row["start_tw"]))]
-        self.end_tw = [datetime.datetime.fromisoformat(str(row["end_tw"]))]
+        self.start_tw = datetime.datetime.fromisoformat(str(row["start_tw"]))
+        self.end_tw = datetime.datetime.fromisoformat(str(row["end_tw"]))
 
-        self.lat = float(row["home_lat"])
-        self.long = float(row["home_long"])
-
+        self.lat = float(row["lat"])
+        self.long = float(row["long"])
+        self.location = self.lat, self.long
+    def __str__(self):
+        return f"{self.id}  {self.start_tw} {self.end_tw} {self.location}"
 
 
 class NodeType(StrEnum):
@@ -122,6 +125,14 @@ class Route_Node:
     id:  int
     start_time: datetime.datetime
     end_time: datetime.datetime
+
+    def copy_node(self):
+        return Route_Node(
+            node_type=self.node_type,
+            id=self.id,
+            start_time=self.start_time,
+            end_time=self.end_time
+        )
 
     def __str__(self):
         if self.node_type == NodeType.TECH:
@@ -213,7 +224,7 @@ class Solution:
         self.tasks = tasks
         self.routes = {t.master_id: [] for t in technicians.values()} 
         self.changedRoute = {t.master_id: False for t in technicians.values()} # checks if there is need to recalculate costs and incomes
-        self.task_costs = dict[int,float]
+        self.task_costs = {t.id: 0.0 for t in tasks.values()}
 
         self.monetaryCost = {t.master_id: 0.0 for t in technicians.values()} #total cost per technician
         self.pathCost = {t.master_id: 0.0 for t in technicians.values()} #driving (cost for path)
@@ -229,6 +240,9 @@ class Solution:
         self.totalResourceCost = 0.0
         self.totalIncome = 0.0
 
+        self.forgottenTaskCost = 0.0
+        self.weight = 0.0
+
         self.data = Resource_Data()
 
 
@@ -239,6 +253,7 @@ class Solution:
         new_solution.tasks = self.tasks.copy()
         new_solution.routes = self.routes.copy()
         new_solution.changedRoute = self.changedRoute.copy()
+        new_solution.task_costs = self.task_costs.copy()
         
         new_solution.monetaryCost = self.monetaryCost.copy()
         new_solution.pathCost = self.pathCost.copy()
@@ -254,13 +269,25 @@ class Solution:
         new_solution.totalResourceCost = self.totalResourceCost
         new_solution.totalIncome = self.totalIncome
 
+        new_solution.forgottenTaskCost = self.forgottenTaskCost
+        new_solution.weight = self.weight
+
         new_solution.data = self.data
         return new_solution
     
 
         pass
+#! the list mutates
+    def unUsedTasks(self, tasks, unusedTasks):
+        totalCost = 0.0
+        for node in unusedTasks:
+            totalCost += tasks[node.id].income * tasks[node.id].priority 
 
-    def updateCosts_Income(self, distances, tasks):
+        self.forgottenTaskCost = totalCost
+
+    def updateCosts_Income(self, distances, tasks, unusedTasks):
+        self.unUsedTasks(tasks, unusedTasks)
+        
         routes = self.routes
         changedRoute = self.changedRoute
 
@@ -301,8 +328,10 @@ class Solution:
                         duration_work += duration_workTask
                         incomeTech += tasks[node.id].income
                         resourceCostTask = 0.0
-                        for resource in tasks[node.id].resources:
-
+                        resources = tasks[node.id].resources
+                        #print(resources)
+                        for resource in resources:
+                            #print(resource)
                             resourceCostTask += self.data.resource_cost[resource] 
                         resourceCost += resourceCostTask
                         self.task_costs[node.id] = (cost_driveToTask+duration_workTask)*self.data.technician_workHourCost + resourceCostTask + cost_driveToTask*self.data.drivingHourCost
@@ -346,10 +375,11 @@ class Solution:
         self.totalWeatherCost = totalWeatherCost
         self.totalIncome = totalIncome
         self.totalResourceCost = totalResourceCost
+        self.weight = self.totalMonetaryCost - self.totalIncome + self.forgottenTaskCost
 
 
     def __str__(self):
-        print(f"Tasks in Solution: {self.tasks}")
+        #print(f"Tasks in Solution: {self.tasks}")
         """
         masterID_list = []
         tech_id_list = []
@@ -486,19 +516,28 @@ class Operators:
                 break
     
 
-    def destroy(self, solution, unassigned_tasks):
-        self.chosen_destroy = 0
+    def destroy(self, solution, unassigned_tasks,task):
+        #self.chosen_destroy = 0
+        if self.chosen_destroy == 3:
+            self.chosen_destroy = 0
+        if self.chosen_destroy == 4:
+            self.chosen_destroy = 1
+        if self.chosen_destroy == 5:
+            self.chosen_destroy = 2
+        self.chosen_destroy = 4
+        #print(self.chosen_destroy)
+
         match self.chosen_destroy:
             case 0:
                 return self.destroy_ops.random(solution, unassigned_tasks)
             case 1:
-                return self.destroy_ops.route(solution, unassigned_tasks)
+                return self.destroy_ops.route(solution, unassigned_tasks) # ! SOMETHING
             case 2:
-                return self.destroy_ops.critical(solution, unassigned_tasks)
+                return self.destroy_ops.critical(solution, unassigned_tasks) #! after a while does nothing (no change at all, no randomness)
             case 3:
                 return self.destroy_ops.shaw(solution, unassigned_tasks)
             case 4:
-                return self.destroy_ops.skill(solution, unassigned_tasks)
+                return self.destroy_ops.skill(solution, unassigned_tasks,task)
             case 5:
                 return self.destroy_ops.type(solution, unassigned_tasks)
             
@@ -543,6 +582,7 @@ class Destroy_Operator:
 
         k = int(max(1, len(all_nodes) * 0.1))
         removed_nodes = random.sample(all_nodes, k)
+        print()
 
         for tech_id, node in removed_nodes:
             if not new_solution.changedRoute[tech_id]:
@@ -575,7 +615,7 @@ class Destroy_Operator:
 
             for node in route:
                 if node.node_type == NodeType.TASK:
-                    unassigned_tasks.append(node.id)
+                    unassigned_tasks.append(node)
 
             new_solution.changedRoute[tech_id] = True
 
@@ -607,7 +647,7 @@ class Destroy_Operator:
                     new_solution.routes[tech_id] = solution.routes[tech_id].copy()
                 
                 new_solution.routes[tech_id].remove(node)
-                unassigned_tasks.append(node.id)
+                unassigned_tasks.append(node)
 
                 new_solution.changedRoute[tech_id] = True
 
@@ -623,7 +663,7 @@ class Destroy_Operator:
         return new_solution, unassigned_tasks
     
 
-    def skill(self,solution, unassigned_tasks, task): ### ! not finished
+    def skill(self,solution, unassigned_tasks, tasks): ### ! not finished
         new_solution = solution.copy()
 
         all_nodes = [
@@ -633,26 +673,32 @@ class Destroy_Operator:
         if node.node_type == NodeType.TASK
         ]
 
-        skills = set()
+        skills_set = set()
         for tech_id, node in all_nodes:
-            skills.update(task[node.id].skills)
+            skills_set.update(tasks[node.id].skills)
+
+        skills = []
+        for skill in skills_set:
+            skills.append(skill)
 
         k = int(max(1, len(skills) * 0.1))
         chosen_skills = random.sample(skills, k)
         k_tasks = int(max(1, len(all_nodes) * 0.05))
         
+
+
         for skill in chosen_skills:
             removed_task_count = 0
             for tech_id, node in all_nodes:
                 if removed_task_count == k_tasks:
                     break
-                current_task = task.id[node.id]
+                current_task = tasks[node.id]
                 if skill in current_task.skills:
                     if not new_solution.changedRoute[tech_id]:
                         new_solution.routes[tech_id] = solution.routes[tech_id].copy()
                     
                     new_solution.routes[tech_id].remove(node)
-                    unassigned_tasks.append(node.id)
+                    unassigned_tasks.append(node)
 
                     new_solution.changedRoute[tech_id] = True
                     removed_task_count+=1   
@@ -674,6 +720,28 @@ class Destroy_Operator:
 class Repair_Operator: 
     def __init__(self):
         pass
+
+    def calculateRouteCost(self,  route, distances, tasks): #start, end, id,
+        totatTravel = 0
+        resources = 0
+        totalTime = 0
+        income = 0
+
+        for i in range(len(route)-2):
+            if route[i].node_type == NodeType.TECH and route[i+1] == NodeType.TECH:
+                continue
+            totatTravel += distances.get_distance(Distance_Node(route[i].node_type, route[i].id),Distance_Node(route[i+1].node_type, route[i+1].id))
+            #if route[i].id == id:
+            #    totalTime += (end-start).total_seconds()
+            if route[i].node_type != NodeType.TECH:
+                totalTime += (route[i].end_time-route[i].start_time).total_seconds()
+            totalTime + totatTravel*60
+
+            if route[i].node_type == NodeType.TASK:
+                income += tasks[route[i].id].income
+
+        return (totatTravel/100*6*2 + totalTime/60*20) - income 
+
     def assign_feasability(self, task, tech, distances): # skills and time_windows
         can_assign = True
         
@@ -704,7 +772,7 @@ class Repair_Operator:
         return can_assign
 
 
-    def timeWindow_feasabilityTECH(self, nodes,tech, distances, tasks):
+    def timeWindow_feasabilityTECH(self, nodes, tech, distances, tasks):
         
         
         node_0 = Distance_Node(nodes[0].node_type, nodes[0].id)
@@ -720,11 +788,20 @@ class Repair_Operator:
             duration_0 = datetime.timedelta(minutes=0)
 
         travelTime0_1 = distances.get_distance(node_0, node_1)
-
-        end_tw_1 = tasks[nodes[1].id].end_tw
-        duration_1 = tasks[nodes[1].id].duration
-
         
+        if nodes[1].node_type == NodeType.TASK:
+            end_tw_1 = tasks[nodes[1].id].end_tw
+            duration_1 = tasks[nodes[1].id].duration
+
+        elif nodes[1].node_type == NodeType.DEPOT:
+            end_tw_1 = tasks[nodes[1].id].end_tw
+            duration_1 = 30
+
+        elif nodes[1].node_type == NodeType.SHOP:
+            end_tw_1 = tasks[nodes[1].id].end_tw
+            duration_1 = 10
+
+
         travelTime0_1 = datetime.timedelta(minutes=travelTime0_1)
         duration_1 = datetime.timedelta(minutes=duration_1)
 
@@ -809,11 +886,11 @@ class Repair_Operator:
         travel_end_to_insertion = datetime.timedelta(minutes=travel_end_to_insertion)
 
         if insertion_node.node_type is NodeType.TASK:
-            insertion_node_start = max(end_task + travel_end_to_insertion, task.start_tw) # *
-            insertion_duration = datetime.timedelta(minutes=int(task.duration)) # *
+            insertion_node_start = max(end_task + travel_end_to_insertion, task[insertion_node.id].start_tw) # *
+            insertion_duration = datetime.timedelta(minutes=int(task[insertion_node.id].duration)) # *
             insertion_node_end = insertion_node_start + insertion_duration # * overtime?
             #print(insertion_node_end, task.end_tw)
-            insertion_overtime =  insertion_node_end - task.end_tw
+            insertion_overtime =  insertion_node_end - task[insertion_node.id].end_tw
             #print(insertion_overtime > TASK_OVERTIME)
             
         elif insertion_node.node_type is NodeType.SHOP:
@@ -828,37 +905,25 @@ class Repair_Operator:
 
         return insertion_node_start, insertion_duration, insertion_node_end, insertion_overtime
     
-    def one_nodeInsertion(self, prev_nodes, insertion_node, next_nodes, tech, tasks, distances):
-        #if insertion_node.id in [61,62,65,169,16,170,168]:
-        #    return [], False
-        last_prev_node = len(prev_nodes)-1
-        end_task = prev_nodes[-1].end_time 
-       
-        travel_end_to_insertion = distances.get_distance(Distance_Node(prev_nodes[-1].node_type, prev_nodes[-1].id), Distance_Node(insertion_node.node_type, insertion_node.id))
 
-        insertion_node_start, insertion_duration, insertion_node_end, insertion_overtime = self.insertionStartDurationEnd(insertion_node, tasks[insertion_node.id], end_task, travel_end_to_insertion)
-
-        travel_insertion_to_next = distances.get_distance(Distance_Node(insertion_node.node_type, insertion_node.id),Distance_Node(next_nodes[0].node_type, next_nodes[0].id))
-        travel_insertion_to_next = datetime.timedelta(minutes=travel_insertion_to_next)
-        start_next_node = next_nodes[0].start_time
-
-
+    def timeFeasability(self,insertion_overtime, prev_nodes,insertion_node_end,travel_insertion_to_next,next_nodes,insertion_node_start,start_next_node,end_task):
+        feasable = True
         if insertion_overtime > TASK_OVERTIME:
-            return None, None, None, [], False
+            feasable = False
         if prev_nodes[-1].end_time.time() >= datetime.time(16, 0):
             
             if (insertion_node_end + travel_insertion_to_next).time() > datetime.time(17, 0):
-                return None, None, None, [], False
+                feasable = False
             elif (insertion_node_end + travel_insertion_to_next).time() < datetime.time(16, 0):
-                return None, None, None, [], False
+                feasable = False
             #print((insertion_node_end + travel_insertion_to_next).time())
             #print((insertion_node_end + travel_insertion_to_next).time() > datetime.time(17, 0))
         if  prev_nodes[-1].end_time.date() != next_nodes[0].start_time.date() and next_nodes[0].node_type != NodeType.TECH:
-            return None, None, None, [], False
+            return None,[], False
 
         if  prev_nodes[-1].start_time.date() == next_nodes[0].start_time.date():
             if insertion_node_start.date() != prev_nodes[-1].end_time.date():
-                return None, None, None, [], False
+                feasable = False
             # prev 400-500
             # insertino 600-800
             # next 900-1000
@@ -866,41 +931,38 @@ class Repair_Operator:
 
             #if next_nodes[0].node_type == NodeType.TECH:
             if (insertion_node_end + travel_insertion_to_next+TECH_REST).time() >= (start_next_node).time(): # 800 < 900
-                return None, None, None, [], False
+                feasable = False
             if (insertion_node_start+TECH_REST).time() >= (start_next_node).time(): # 600 < 900
-                return None, None, None, [], False
+                feasable = False
             #if prev_nodes[-1].node_type == NodeType.TECH:
             if (insertion_node_end + travel_insertion_to_next-TECH_REST).time() <= (end_task).time(): # 800 > 500
-                return None, None, None, [], False
+                feasable = False
             #! insert after previous task ends
             if (insertion_node_start+TECH_REST).time() <= (end_task).time(): # 600 > 500
-                return None, None, None, [], False
+                feasable = False
         
-            
-
-            
         if  prev_nodes[-1].start_time.date() != next_nodes[0].start_time.date():
             if prev_nodes[-1].start_time.time() < datetime.time(15, 0):
-                return None, None, None, [], False
-                
-        #! in full rebuild after building the route up to new insertion could just stop if next step can be done
-        
-       
-        
-        
-        if prev_nodes[-1].node_type != NodeType.TECH and next_nodes[0].node_type != NodeType.TECH:
+                feasable = False
+
+        return feasable
+
+
+    #if insertion_node.id in [61,62,65,169,16,170,168]:
+    #    return [], False
+
+    #if prev_nodes[-1].node_type != NodeType.TECH and next_nodes[0].node_type != NodeType.TECH:
             #print(end_task.time(), insertion_node_start.time(), insertion_node_end.time(), start_next_node.time(), end_task.time() < insertion_node_start.time(), insertion_node_end.time() < start_next_node.time(), insertion_node_end.date(), start_next_node.date())
-            if not (end_task.time() < insertion_node_start.time()) or not(insertion_node_end.time() < start_next_node.time()):
+    #        if not (end_task.time() < insertion_node_start.time()) or not(insertion_node_end.time() < start_next_node.time()):
                 #print(end_task.time(), insertion_node_start.time(), insertion_node_end.time(), start_next_node.time(), end_task.time() < insertion_node_start.time(), insertion_node_end.time() < start_next_node.time(), insertion_node_end.date(), start_next_node.date())
-                pass
+    #            pass
         #print()
         #insertion_node.start_time = insertion_node_start
         #insertion_node.end_time = insertion_node_end
-
-        new_route = prev_nodes + [insertion_node] + next_nodes
-        printing = True
-        prev =  len(prev_nodes)-1
-        next =  len(prev_nodes)+1
+    #! in full rebuild after building the route up to new insertion could just stop if next step can be done
+    #printing = True
+    #    prev =  len(prev_nodes)-1
+    #    next =  len(prev_nodes)+1
 
         """for i in range(len(new_route)-2):
             if new_route[i].id in [61,62,63,60,65]:
@@ -942,11 +1004,7 @@ class Repair_Operator:
                 pass
 
         """
-
-        return insertion_node_start, insertion_node_end, insertion_node.id, new_route, True
-        
-
-        #if insertion_node_start > prev_nodes[last_prev_node].end_time:
+         #if insertion_node_start > prev_nodes[last_prev_node].end_time:
         #    if insertion_node_end + travel_insertion_to_next < start_next_node:
                 #if next_nodes[0].node_type != NodeType.TECH:
                 #    if insertion_node_start < prev_nodes[-1].end_time:
@@ -954,88 +1012,133 @@ class Repair_Operator:
                 
             
         #return [], False
-        
-        
-    def insertion_feasability(self, prev_nodes, insertion_node, next_nodes, tech, tasks, distances):
-        # * where it gets the end? #! what if it is TECH node, that does not have end time # * tech end has end_time whihc is start of tw
-        last_prev_node = len(prev_nodes)-1
-        # tech 1600
-        # tech 0730
-        # task ?
-        # task ? 
-        #if prev_nodes[-1].start_time < tasks[insertion_node.id].end_tw and tasks[insertion_node.id].end_tw < next_nodes[0].start_time: # !!!!!!!!!!
-        #    print(prev_nodes[-1].start_time, tasks[insertion_node.id].end_tw, next_nodes[0].start_time)
-        end_task = prev_nodes[last_prev_node].end_time 
-        ### ! i do use the newly inserted route, hwoever it has no start or end...
-        ### ! inserted goes further and tries to rebuild whihc is fine.
-        ### ! do both shop and task insertion at same time
-        ### ! update technician resources
-        ### ! what if technician goes to depo/shop in his free time windwo and nothing else in that day prep for next day?
 
-        # ! add weather
+    def one_nodeInsertion(self, prev_nodes, insertion_node, next_nodes, tech, tasks, distances):
+       
+        last_prev_node = len(prev_nodes)-1
+        end_task = prev_nodes[-1].end_time 
+
+        travel_end_to_insertion = distances.get_distance(Distance_Node(prev_nodes[-1].node_type, prev_nodes[-1].id), Distance_Node(insertion_node.node_type, insertion_node.id))
+
+        insertion_node_start, insertion_duration, insertion_node_end, insertion_overtime = self.insertionStartDurationEnd(insertion_node, tasks, end_task, travel_end_to_insertion)
+
+        travel_insertion_to_next = distances.get_distance(Distance_Node(insertion_node.node_type, insertion_node.id),Distance_Node(next_nodes[0].node_type, next_nodes[0].id))
+        travel_insertion_to_next = datetime.timedelta(minutes=travel_insertion_to_next)
+        start_next_node = next_nodes[0].start_time
+
+        feasable = self.timeFeasability(insertion_overtime, prev_nodes,insertion_node_end,travel_insertion_to_next,next_nodes,insertion_node_start,start_next_node,end_task)
+        
+        if not feasable:
+            return None, [], False
+
+            
+        new_node = Route_Node(insertion_node.node_type, insertion_node.id, insertion_node_start, insertion_node_end)
+        new_route = prev_nodes + [insertion_node] + next_nodes
+        
+
+        return new_node, new_route, True
+        
+
+       
+
+    # * where it gets the end? #! what if it is TECH node, that does not have end time # * tech end has end_time whihc is start of tw
+    # tech 1600
+    # tech 0730
+    # task ?
+    # task ? 
+    #if prev_nodes[-1].start_time < tasks[insertion_node.id].end_tw and tasks[insertion_node.id].end_tw < next_nodes[0].start_time: # !!!!!!!!!!
+    #    print(prev_nodes[-1].start_time, tasks[insertion_node.id].end_tw, next_nodes[0].start_time)
+   
+    ### ! i do use the newly inserted route, hwoever it has no start or end...
+    ### ! inserted goes further and tries to rebuild whihc is fine.
+    ### ! do both shop and task insertion at same time
+    ### ! update technician resources
+    ### ! what if technician goes to depo/shop in his free time windwo and nothing else in that day prep for next day?
+
+    # ! add weather
+    # * all technician homes from and to are inserted at construction
+    # ! SHOP AND DEPOT does not have time_window
+    #if prev_nodes[last_prev_node].start_time < insertion_node_end and insertion_node_start < prev_nodes[last_prev_node].end_time:
+    #    return None, [], False
+    
+    #if next_nodes[0].start_time < insertion_node_start or insertion_node_end > next_nodes[0].end_time: #and insertion_node_start < next_nodes[0].end_time:
+    #    return None, [], False
+    def insertion_feasability(self, prev_nodes, insertion_node, next_nodes, tech, tasks, distances):
+        last_prev_node = len(prev_nodes)-1
+        end_task = prev_nodes[last_prev_node].end_time 
+        
         travel_end_to_insertion = distances.get_distance(Distance_Node(prev_nodes[-1].node_type, prev_nodes[-1].id), Distance_Node(insertion_node.node_type, insertion_node.id))
         
-        insertion_node_start, insertion_duration, insertion_node_end, insertion_overtime = self.insertionStartDurationEnd(insertion_node, tasks[insertion_node.id], end_task, travel_end_to_insertion)
+        insertion_node_start, insertion_duration, insertion_node_end, insertion_overtime = self.insertionStartDurationEnd(insertion_node, tasks, end_task, travel_end_to_insertion)
 
-        if insertion_overtime > TASK_OVERTIME:
-            return [], False
+        travel_insertion_to_next = distances.get_distance(Distance_Node(insertion_node.node_type, insertion_node.id),Distance_Node(next_nodes[0].node_type, next_nodes[0].id))
+        travel_insertion_to_next = datetime.timedelta(minutes=travel_insertion_to_next)
+        if next_nodes[0].start_time is None:
+            next_nodes[0].start_time = max(insertion_node_end + travel_insertion_to_next+ TECH_REST, tasks[next_nodes[0].id].start_tw)
+            next_nodes[0].end_time = tasks[next_nodes[0].id].end_tw+TASK_OVERTIME
+
+            if insertion_node_end + TECH_REST+ travel_insertion_to_next + datetime.timedelta(minutes=tasks[next_nodes[0].id].duration) > next_nodes[0].end_time:
+                return None, [], False
+
+        #if insertion_overtime > TASK_OVERTIME:
+        #    return None, [], False
         
-
-        # * all technician homes from and to are inserted at construction
-        # ! SHOP AND DEPOT does not have time_window
         next_task_start_feasability = None
 
-        if next_nodes[0].node_type is NodeType.TECH: # depends if it is last node or not or maybe just should somehow work with this in a different way
-            next_task_start_feasability = next_nodes[0].start_time + TECH_OVERTIME
-            if insertion_node_end - next_nodes[0].start_time > TECH_OVERTIME:
-                return [], False
-
-        if next_nodes[0].node_type is NodeType.TASK:
-            next_task_start_feasability = tasks[next_nodes[0].id].end_tw + TASK_OVERTIME
-            next_task_duration = tasks[next_nodes[0].id].duration 
+        indx = 0 
+        if next_nodes[indx].node_type is NodeType.SHOP or next_nodes[indx].node_type is NodeType.DEPOT:
+            indx = 1
+        if next_nodes[indx].node_type is NodeType.TECH: # depends if it is last node or not or maybe just should somehow work with this in a different way
+            next_task_start_feasability = next_nodes[indx].start_time + TECH_OVERTIME
+            if insertion_node_end - next_nodes[indx].start_time > TECH_OVERTIME:
+                return None, [], False
+        elif next_nodes[indx].node_type is NodeType.TASK:
+            next_task_start_feasability = tasks[next_nodes[indx].id].end_tw + TASK_OVERTIME
+            next_task_duration = tasks[next_nodes[indx].id].duration 
             next_task_duration = datetime.timedelta(minutes=next_task_duration)
 
         if next_task_start_feasability is None:
-            return [], False
+            return None, [], False
         # ! add weather 
-        travel_insertion_to_next = distances.get_distance(Distance_Node(insertion_node.node_type, insertion_node.id),Distance_Node(next_nodes[0].node_type, next_nodes[0].id))
-        travel_insertion_to_next = datetime.timedelta(minutes=travel_insertion_to_next)
-
-                
-        if prev_nodes[last_prev_node].start_time < insertion_node_end and insertion_node_start < prev_nodes[last_prev_node].end_time:
-            return [], False
         
-        if next_nodes[0].start_time < insertion_node_start or insertion_node_end > next_nodes[0].end_time: #and insertion_node_start < next_nodes[0].end_time:
-            return [], False
-                
+        feasable = self.timeFeasability(insertion_overtime, prev_nodes,insertion_node_end,travel_insertion_to_next,next_nodes,insertion_node_start,next_task_start_feasability,end_task)
+        
+        if not feasable:
+            return None, [], False
 
-        """
+                
+       
         # ! building route not checking
-        if insertion_node_start > prev_nodes[last_prev_node].end_time:
-            if next_nodes[0].node_type == NodeType.TASK:
+        #if insertion_node_start > prev_nodes[last_prev_node].end_time:
+        
+        new_node = Route_Node(insertion_node.node_type, insertion_node.id, insertion_node_start, insertion_node_end)
+        new_route = prev_nodes + [insertion_node] + next_nodes
+
+        if next_nodes[0].node_type == NodeType.TASK:
+            
+            if insertion_node_end + travel_insertion_to_next + next_task_duration < next_task_start_feasability:
+                #print(insertion_node_end + travel_insertion_to_next + next_task_duration, next_task_start_feasability)
+                #insertion_node.start_time = insertion_node_start
+                #insertion_node.end_time = insertion_node_end
+
+                return new_node, new_route, True
+        
+        elif next_nodes[0].node_type == NodeType.TECH:
+            if insertion_node_end + travel_insertion_to_next < next_task_start_feasability:
                 
-                if insertion_node_end + travel_insertion_to_next + next_task_duration < next_task_start_feasability:
-                    #print(insertion_node_end + travel_insertion_to_next + next_task_duration, next_task_start_feasability)
-                    insertion_node.start_time = insertion_node_start
-                    insertion_node.end_time = insertion_node_end
+                #insertion_node.start_time = insertion_node_start
+                #insertion_node.end_time = insertion_node_end
 
-                    return prev_nodes + [insertion_node] + next_nodes, True
-            
-            elif next_nodes[0].node_type == NodeType.TECH:
-                if insertion_node_end + travel_insertion_to_next < next_task_start_feasability:
-                    
-                    insertion_node.start_time = insertion_node_start
-                    insertion_node.end_time = insertion_node_end
+                return new_node, new_route, True
+        
+        else: # ! next node nothing
+            #insertion_node.start_time = insertion_node_start
+            #insertion_node.end_time = insertion_node_end
 
-                    return prev_nodes + [insertion_node] + next_nodes, True
-            
-            else: # ! next node nothing
-                insertion_node.start_time = insertion_node_start
-                insertion_node.end_time = insertion_node_end
 
-                return prev_nodes + [insertion_node] + next_nodes, True
-        """
-        return [], False
+            return new_node, new_route, True
+        
+        return None, [], False
 
 
     def leftSide_twCheck(self, node, task):
@@ -1043,12 +1146,17 @@ class Repair_Operator:
             return True
         return False
 
-
+    
     def task_insertion(self, prev_nodes, insertion_task, next_nodes, tech, tasks, distances):
         feasable = False
-        start, end, id, new_route, feasable = self.one_nodeInsertion(prev_nodes, insertion_task, next_nodes, tech, tasks, distances) #!
-        """
-        if not feasable: #! rebuilding whole route
+        new_starts = []
+        new_node, new_route, feasable = self.one_nodeInsertion(prev_nodes, insertion_task, next_nodes, tech, tasks, distances) #!
+        new_starts.append(new_node)
+        #singleInsert +=1
+
+        if not feasable and False: #! rebuilding whole route
+            #singleInsert -=1
+            new_starts.clear()
             # ! should consider if both sides need rebuilding or can only left side or right side
             
             insertion_index = len(prev_nodes)
@@ -1057,49 +1165,118 @@ class Repair_Operator:
             #print("prev_nodes[insertion_index-1] ", prev_nodes[insertion_index-1])
             
             is_technician = False
-            if prev_nodes[insertion_index-1].node_type == NodeType.TECH:
+            if prev_nodes[-1].node_type == NodeType.TECH:
                 prev_node = tech
                 is_technician = True
             else:
-                #print(tasks[prev_nodes[insertion_index-1].id])
-                prev_node = tasks[prev_nodes[insertion_index-1].id]
+                #print(tasks[prev_nodes[-1].id])
+                prev_node = tasks[prev_nodes[-1].id]
 
             not_right_side = False
             
             if not is_technician: 
                 if self.leftSide_twCheck(prev_nodes[insertion_index-1], prev_node): #! unless it is technician
-                    new_route, feasable = self.insertion_feasability(prev_nodes[-1], insertion_task, next_nodes[0], tech, tasks, distances) #!
-                    route = [prev_nodes[-1]] + [insertion_task] + next_nodes
-                    for i in range(len(route)-2):
-                        new_route, feasable = self.insertion_feasability([route[i]], route[i+1], [route[i+2]], tech, tasks, distances) #!
-                        if not feasable:
-                            break    
+                    #rightOnly += 1
+                    new_node, new_route, feasable = self.insertion_feasability(prev_nodes[-1], insertion_task, next_nodes[0], tech, tasks, distances) #!
+                    new_starts.append(new_node)
 
-                        route = new_route
+                    #route = [prev_nodes[-1]] + [insertion_task] + next_nodes
+                    route = [n.copy_node() for n in ([prev_nodes[-1]] + [insertion_task] + next_nodes)]
+                    route[len(prev_nodes)] = new_node
+                    for i in range(len(route)-2):
+                        if i+2 > len(route)-1:
+                            break
+                        #print("a2: ", i, len(route)-1)
+
+                        if i+1 > len(route)-1:
+                            break
+                        #print("a3: ", i, len(route)-2)
+
+                        if route[i+1].node_type == NodeType.TECH:
+                            continue
+                        #print("a4: ", i, len(route)-2)
+                        #print(route)
+                        new_node, new_route, feasable = self.insertion_feasability([route[i]], route[i+1], [route[i+2]], tech, tasks, distances) #!
+                        if not feasable:
+                            #rightOnly -= 1
+                            break
+                        #print(route)    
+                        route[i+1] = new_node
+                        new_route = route
+                        new_starts.append(new_node)
+                        #print(route)
+                        #route = new_route
                     #new_route = 
                 else:
                     not_right_side =True
+                    
+                
             
-            if not_right_side:
-                route = prev_nodes + [insertion_task] + next_nodes
+            if not_right_side or is_technician:
+                #rightOnly -= 1
+                #fullRestart += 1
+                new_starts.clear()
+                #route = prev_nodes + [insertion_task] + next_nodes
+                route = [n.copy_node() for n in (prev_nodes + [insertion_task] + next_nodes)]
                 #print(route)
                 for i in range(len(route)-2): # * 0 1 2 3 4
-                    if i+2 < len(route)-1:
+                    #print("a1: ", i, len(route)-2)
+
+                    if i+2 > len(route)-1:
                         break
-                    if i+1 < len(route)-1:
+                    #print("a2: ", i, len(route)-1)
+
+                    if i+1 > len(route)-1:
                         break
+                    #print("a3: ", i, len(route)-2)
+
                     if route[i+1].node_type == NodeType.TECH:
                         continue
-                    new_route, feasable = self.insertion_feasability([route[i]], route[i+1], [route[i+2]], tech, tasks, distances) #!
-                    if  not feasable:
-                        break
-                    route = new_route
-        """
+                    #print("a4: ", i, len(route)-2)
+                    printing = False
+                    if printing:
+                        for node in route:
+                            if node.node_type == NodeType.TASK:
+                                print("AAAAAAAAA: ", node.node_type, node.id, node.start_time, node.end_time)
+                            else:
+                                print(node.node_type, node.id, node.start_time, node.end_time)
+                            
+                        print([route[i]], route[i+1], [route[i+2]])
 
-        if not feasable:
-            return None,None,None,[], False    
+                    new_node, new_route, feasable = self.insertion_feasability([route[i]], route[i+1], [route[i+2]], tech, tasks, distances) #!
+                    #print(feasable, route[i+1])
+                    if  not feasable:
+                        #fullRestart -= 1
+                        break
+                    printing = False
+                    if printing:
+                        for node in route:
+                            if node.node_type == NodeType.TASK:
+                                print("AAAAAAAAA: ", node.node_type, node.id, node.start_time, node.end_time)
+                            else:
+                                print(node.node_type, node.id, node.start_time, node.end_time)
+                        print()
+                    route[i+1] = new_node
+                    new_route = route
+                    #print(route)
+                    new_starts.append(new_node)
+                #print(new_starts)   
+
         
-        return start, end, id, new_route, feasable
+        if not feasable:
+            
+            return [], False    
+        #print("waaaaaaaaaaaaaaaaa")
+        
+        updated_route = deepcopy(new_route)
+        for node in new_starts:
+            for i in range(len(updated_route)):
+                if updated_route[i].id == node.id:
+                    updated_route[i].start_time = node.start_time
+                    updated_route[i].end_time = node.end_time
+                    
+        return updated_route, feasable
+        #return new_starts, new_route, feasable
 
 
     def tech_goRestock(self, firstResourceFailurePoint, route, tech, tasks, distances, resources_needed, restocking_nodes):
@@ -1123,48 +1300,77 @@ class Repair_Operator:
         cost = 0.0
         is_restocked = False
         restocking_route = route
-
-        totalNeededResources = sum(resources_needed.values())
-        techvanSize = sum(tech.resources.values())
-        currentTech_availableVanSize = VANSIZE - techvanSize # wont work because tech vansize is a list
+        #print(resources_needed.values())
         
+        totalNeededResources = 0
+        for value in resources_needed.values():
+            totalNeededResources += value[0]
+
+        #print("totalNeededResources",totalNeededResources)
+
+
+        techvanSize = sum(tech.resources.values())
+        #print(techvanSize)
+        
+        currentTech_availableVanSize = VANSIZE - techvanSize # wont work because tech vansize is a list
+        #print(currentTech_availableVanSize)
+
         for i in range(firstResourceFailurePoint):
-            
-            if route[i].node_type not in (NodeType.TASK, NodeType.TECH):
+            indx = i + 1
+            if route[indx].node_type not in (NodeType.TASK, NodeType.TECH):
                 continue
             
-            if route[i].node_type is not NodeType.TASK:    
-                techvanSize -= sum(tasks[route.id].resources.values()) 
+            if route[indx].node_type is NodeType.TASK:
+                try:
+                    techvanSize -= sum(tasks[route[indx].id].resources)
+                except KeyError as e:
+                    print(route[i])
+
+                    raise
+
                 currentTech_availableVanSize = VANSIZE - techvanSize
             
             if currentTech_availableVanSize < totalNeededResources:
                 continue
             ## if tech does not have necessary resources at this point we consider to go to depo/shop at any point in previous tasks.
-            for shop in restocking_nodes:
-                if shop.type is not NodeType.SHOP:
-                    continue
-                if not self.timeWindow_feasability([route[i], shop, route[i+1]], tech, distances, tasks):
-                    continue
+            
+            
+            for shop in restocking_nodes[0].values():
+                #print(shop)
+                #if shop.node_type is not NodeType.SHOP:
+                #    continue
+                shop_node = Route_Node(NodeType.SHOP, shop.id, start_time=None, end_time=None)
+                #if not self.timeWindow_feasabilityTECH([route[i], shop_node, route[i+1]], tech, distances, tasks):
+                #    continue
 
                 new_route = route # ! should copy
-                shop_node = Route_Node(NodeType.SHOP, shop.id, start_time=None, end_time=None)
+                
                 ## ! try to insert, maybe no need to rebuild, if can't insert then try to rebuild the route
                 #pre_end + travel + insertion_duration + travel + next_start
-                new_route, feasable = self.insertion_feasability(route[:i], shop_node, route[i:], tech, tasks, distances)
-
+                new_node, new_route, feasable = self.insertion_feasability(route[:indx], shop_node, route[indx:], tech, tasks, distances)
+                new_starts = []
+                new_starts.append(new_node)
                 ## ! try to rebuild from insertion outwards?
-                new_route.insert(i + 1, shop_node)
+                #new_route.insert(i + 1, shop_node)
                 
-                new_route, feasable = self.full_feasability(new_route)
+                #new_route, feasable = self.full_feasability(new_route)
                 if not feasable:
                     continue
 
-                candidates.append(new_route)
+                updated_route = deepcopy(new_route)
+                for node in new_starts:
+                    for i in range(len(updated_route)):
+                        if updated_route[i].id == node.id:
+                            updated_route[i].start_time = node.start_time
+                            updated_route[i].end_time = node.end_time
 
+                cost = self.calculateRouteCost(updated_route, distances, tasks)
+                candidates.append((cost, updated_route))
 
-            for depot in restocking_nodes:
-                if shop.type is not NodeType.DEPOT:
-                    continue
+            continue
+            for depot in restocking_nodes[1]:
+                #if shop.type is not NodeType.DEPOT:
+                #    continue
                 if not self.timeWindow_feasability([route[i], depot, route[i+1]], tech, distances, tasks):
                     continue
 
@@ -1173,31 +1379,64 @@ class Repair_Operator:
                 new_route, feasable = self.full_feasability(new_route)
                 if not feasable:
                     continue
+
                 candidates.append(new_route)
 
         
         # ! comparte candidates and choose best
+        if candidates:
+            #print("restock", end=" ")
+            
+            
+            candidates.sort(key=lambda x: x[0]) # negative on left and positive on right side
 
+            chosen = candidates[0]
+            
+            cost, new_route = chosen
+            
+            restocking_route = new_route
+            printing = False
+            #print(cost, end=" ")
+            
+            if printing:
+                print()
+                for node in new_route:
+                    
+                    if node.node_type == NodeType.TASK:
+                        print("AAAAAAAAA: ", node.node_type, node.id, node.start_time, node.end_time)
+                    else:
+                        print(node.node_type, node.id, node.start_time, node.end_time)
+
+
+            return restocking_route, cost, is_restocked
         
 
         # for route
-        return restocking_route, cost, is_restocked
+        return route, cost, is_restocked
         
 
+    ### ! if can insert task without affecting the surrounding tasks at current time then we just insert and move on
+    ### ! time windows and what not
+    """
+    shop_node = Route_Node(NodeType.SHOP, shop.id, start_time=None, end_time=None)
+    ## ! try to insert, maybe no need to rebuild, if can't insert then try to rebuild the route
+    #pre_end + travel + insertion_duration + travel + next_start
+    new_route, feasable = self.insertion_feasability(new_route[:i], shop_node, new_route[i:], tech, tasks, distances)
+
+    ## ! try to rebuild from insertion outwards?
+    new_route.insert(i + 1, shop_node)
+    """
+    # resources
+    #current_techLocation = Distance_Node(NodeType.TECH, tech.master_id)
+        
+    #currentTime = tech.start_tw 
+    #shiftEnd = tech.end_tw
+    
+    #overTime = 0
+    #taskOverTime = 0
     def routeCost_and_feasability(self, new_route, tech, distances, tasks, data, restocking_nodes): # creates new route considering everything that is hard feasability # weather is when insertion is possible 
-        ### * resources
-        ### time_windows + distance duration
-        ### costs
-
-        
         cost = 0.0
-        current_techLocation = Distance_Node(NodeType.TECH, tech.master_id)
         
-        currentTime = tech.start_tw 
-        shiftEnd = tech.end_tw
-        
-        overTime = 0
-        taskOverTime = 0
 
         ### need to collect all resources and check when each possible time to go to shop
         total_resourcesUsed = {}
@@ -1210,11 +1449,11 @@ class Repair_Operator:
         ### ! recomputes too often
         for node in new_route:
             if node.node_type == NodeType.TASK:
-                for resource_id, count in tasks[node.id].resources.items():
+                for resource_id in tasks[node.id].resources:
                     if resource_id not in total_resourcesUsed:
                         total_resourcesUsed[resource_id] = [0, 0.0] 
 
-                    total_resourcesUsed[resource_id][0] += count # saves resouce count needed
+                    total_resourcesUsed[resource_id][0] += 1 # saves resouce count needed
                     total_resourcesUsed[resource_id][1] += data.resource_cost[resource_id] # saves cost
                 
 
@@ -1240,20 +1479,33 @@ class Repair_Operator:
                             total_resourcesToRestock[resource_id][1] = currentNode # * node.id? saves first task when resource is needed
                         
                         total_resourcesToRestock[resource_id][0] = resource_used - tech_resource_store
-                currentNode += 1  
+            currentNode += 1  
 
+        
         if needed_toRestock:
             restocking_route = [] ### ! cannot do this because shops influece currentNode variable or can do it? # can
             for node in new_route:
                 if node.node_type in (NodeType.TASK, NodeType.TECH):
-                    restocking_route.append
+                    restocking_route.append(node) #* create route without shops or depots
             
-            # ! we insert both new restocking node and task at current insert location or not
-            new_route, resource_costs, is_restocked = self.tech_goRestock(firstResourceFailurePoint, new_route, tech, tasks, distances, total_resourcesToRestock, restocking_nodes)
+
+            # % we insert both new restocking node and task at current insert location or not
+            #print(firstResourceFailurePoint)
+            restocking_route, resource_costs, is_restocked = self.tech_goRestock(firstResourceFailurePoint, restocking_route, tech, tasks, distances, total_resourcesToRestock, restocking_nodes)
+            
+         
+            #print("total_resourcesUsed: ", total_resourcesUsed)
+            #print("total_resourcesToRestock: ", total_resourcesToRestock)
+            #print("needed_toRestock: ", needed_toRestock)
+            #print("firstResourceFailurePoint: ", firstResourceFailurePoint)
+            return restocking_route, True
+            
             if not is_restocked:
-                return new_route, cost, False #not feasable to go to shop and retain all tasks
+                return new_route, False #not feasable to go to shop and retain all tasks
             
             ## * cost should be gotten from resources_needed ignoring the resources that needed restock ## * total_resources - resources_restocked
+            
+            # ! need to save technician van somewhere, every task or at end of task?
             for resource_id, values in total_resourcesToRestock.items():
                 new_cost = total_resourcesUsed[resource_id][1] / total_resourcesUsed[resource_id][0] * (total_resourcesUsed[resource_id][0] - values[0]) 
                 total_resourcesUsed[resource_id][0] -= values[0]
@@ -1263,39 +1515,15 @@ class Repair_Operator:
             for cost_resource in total_resourcesUsed.values():
                 cost += cost_resource[1]
         
-            return new_route, cost, True
+            return new_route, True
         
-        else: ### ! if can insert task without affecting the surrounding tasks at current time then we just insert and move on
-                ### ! time windows and what not
-            """
-            shop_node = Route_Node(NodeType.SHOP, shop.id, start_time=None, end_time=None)
-            ## ! try to insert, maybe no need to rebuild, if can't insert then try to rebuild the route
-            #pre_end + travel + insertion_duration + travel + next_start
-            new_route, feasable = self.insertion_feasability(new_route[:i], shop_node, new_route[i:], tech, tasks, distances)
-
-            ## ! try to rebuild from insertion outwards?
-            new_route.insert(i + 1, shop_node)
-            """
-            # resources
-
-    def calculateRouteCost(self, start, end,id, route, distances, tasks):
-        totatTravel = 0
-        resources = 0
-        totalTime = 0
-
-        for i in range(len(route)-2):
-            if route[i].node_type == NodeType.TECH and route[i+1] == NodeType.TECH:
-                continue
-            totatTravel += distances.get_distance(Distance_Node(route[i].node_type, route[i].id),Distance_Node(route[i+1].node_type, route[i+1].id))
-            if route[i].id == id:
-                totalTime += (end-start).total_seconds()
-            elif route[i].node_type != NodeType.TECH:
-                totalTime += (route[i].end_time-route[i].start_time).total_seconds()
-            totalTime + totatTravel*60
+        else:
+            return new_route, True
+            
+            
 
 
-
-        return totatTravel/100*6*2 + totalTime/60*20 
+    
 
     def greedy(self, solution, unassigned_tasks, technicians, tasks, distances, data, restocking_nodes):
         new_solution = solution.copy()
@@ -1303,7 +1531,8 @@ class Repair_Operator:
         indx3 = 0
         unfeasable_tasks = []
         removable_tasks = []
-        while unassigned_tasks and indx3 < 100: ### set itteration count for stopping inf loop, ### no infinite loop because of pop
+        iters = len(unassigned_tasks)
+        while unassigned_tasks and indx3 < iters+5: ### set itteration count for stopping inf loop, ### no infinite loop because of pop
             candidates = []
             for task in unassigned_tasks:
                 if task.id == 60 or task.id == 63:
@@ -1322,10 +1551,15 @@ class Repair_Operator:
                     old_cost = new_solution.monetaryCost[tech.master_id]
                     new_task_insertion = Route_Node(NodeType.TASK, task.id, start_time=None, end_time=None) #task.start_tw
                     #route = deepcopy(new_solution.routes[tech.master_id])
-                    route = new_solution.routes[tech.master_id]
+                    route = []
+                    for node in new_solution.routes[tech.master_id]:
+                        if node.node_type in [NodeType.TASK, NodeType.TECH]:
+                            route.append(node)       
+                    #route = new_solution.routes[tech.master_id]
                     indx2=0
+
                     
-                    for position in range(len(new_solution.routes[tech.master_id]) - 2): 
+                    for position in range(len(route) - 2): 
                         
                         #print(indx2)
                         #print(len(new_solution.routes), end=" ")
@@ -1355,55 +1589,81 @@ class Repair_Operator:
                         #    if not self.timeWindow_feasabilityTECH([route[position], new_task_insertion, route[position+1]], distances, tasks):
                         #        continue
 
-                        start, end, id, new_route, feasable = self.task_insertion(route[:position], new_task_insertion, route[position:], tech, tasks, distances)
+                        new_route, feasable = self.task_insertion(route[:position], new_task_insertion, route[position:], tech, tasks, distances)
 
-                        #new_route, new_cost, feasable = self.routeCost_and_feasability(new_route, tech, tasks, distances, data, restocking_nodes) 
+                        if feasable:
+                            new_route, feasable = self.routeCost_and_feasability(new_route, tech, distances, tasks, data, restocking_nodes) 
                         
                         # ! restocking
                         if feasable:
-                            new_cost = 1000.0 
-                            new_cost= self.calculateRouteCost(start,end,id,new_route, distances, tasks) 
-
+                            new_cost = 0.0 
+                            #for new_node in new_nodes:
+                            #    new_cost += self.calculateRouteCost(new_node.start_time,new_node.end_time,new_node.id,new_route, distances, tasks) 
+                            
+                            new_cost = self.calculateRouteCost(new_route, distances, tasks)
                             difference = new_cost - old_cost 
-                            candidates.append((difference,start,end,id, new_route, tech.master_id, position, task.id))
+                            #candidates.append((difference, new_nodes, new_route, tech.master_id, position, task.id))
+                            candidates.append((difference, new_route, tech.master_id, position, task.id))
+                            
                             indx2 +=1
                         
                         
                 if not candidates:
-                    unfeasable_tasks.append(task)
-                    removable_tasks.append(task)
+                    is_inList = False
+                    for utask in unfeasable_tasks:
+                        if utask.id == task.id:
+                            is_inList = True
+                    if not is_inList:
+                        unfeasable_tasks.append(task)
+                        removable_tasks.append(task)
             indx3 +=1
-            print(indx3)
+            #print(indx3)
 
             if candidates:
                 indx += 1
-                print(indx)
+                print(indx, end=" ")
+                if indx % 5 == 0:
+                    print()
                 for task in removable_tasks:
                     unassigned_tasks = [t for t in unassigned_tasks if t.id != task.id]
 
-                candidates.sort(key=lambda x: x[0])
+                candidates.sort(key=lambda x: x[0]) # negative on left and positive on right side
 
                 chosen = candidates[0]
-                cost, start, end, id, new_route, tech_id, pos, task_id = chosen
-                for node in new_route:
-                    if node.id == id:
-                        node.start_time = start
-                        node.end_time = end
+                #cost, new_nodes, new_route, tech_id, pos, task_id = chosen
+                cost, new_route, tech_id, pos, task_id = chosen
+                """
+                for i in range(len(new_route)-1):
+                    for new_node in new_nodes:
+                        if new_route[i].id == new_node.id and new_route[i].node_type == new_node.node_type:
+                            #print(new_route[i])
+                            new_route[i] = new_node
+                            #print(new_route[i])
+                            #print("wow")
+                """
+
                 new_solution.routes[tech_id] = new_route
                 new_solution.changedRoute[tech_id] = True
-                printing = False
-                print(cost)
-                if printing and tech_id == 35:
+                printing = True
+                print()
+                print()
+                print(cost, end=" ")
+                if printing:
                     for node in new_route:
                         if node.node_type == NodeType.TASK:
                             print("AAAAAAAAA: ", node.node_type, node.id, node.start_time, node.end_time)
                         else:
                             print(node.node_type, node.id, node.start_time, node.end_time)
+                print()
+                print()
                 #if indx > 30:
                 #    time.sleep(3)
                 unassigned_tasks = [t for t in unassigned_tasks if t.id != task_id]
 
-        print("waaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaat: ", len(unfeasable_tasks))
+        #print("waaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaat: ", len(unfeasable_tasks))
+        #print(unfeasable_tasks)
+        #print()
+        #print()
         return new_solution, unfeasable_tasks
     
 
@@ -1457,6 +1717,7 @@ class ALNS_ALgorithm:
         self.tasks = {}
         self.technicians = {}
         self.unassigned_tasks = []
+        self.current_unassigned_tasks = []
 
         self.distances = Distances()
         self.shops = {}
@@ -1494,7 +1755,7 @@ class ALNS_ALgorithm:
 
         f.close()
 
-        """
+        
         path = urls.shopFilePath
         with open(path) as f:
             reader = csv.DictReader(f, delimiter=';')
@@ -1510,13 +1771,15 @@ class ALNS_ALgorithm:
                 depot_id = int(row["id"])
                 self.depots[depot_id] = Depot(row)  
         f.close()
-        """
+        
 
         
     def construct(self): # ***
 
         self.distances.add_coords(NodeType.TASK, self.tasks)
         self.distances.add_coords(NodeType.TECH, self.technicians)
+        self.distances.add_coords(NodeType.DEPOT, self.depots)
+        self.distances.add_coords(NodeType.SHOP, self.shops)
         #?self.distances = self.distances.add_coords(NodeType.DEPOT, self.tasks)
         #?self.distances = self.distances.add_coords(NodeType.SHOP, self.tasks)
 
@@ -1536,11 +1799,14 @@ class ALNS_ALgorithm:
         
         for id in task_ids:
             self.unassigned_tasks.append(Route_Node(NodeType.TASK, id, start_time=None, end_time=None))
-        print(self.new_solution)
+        #print(self.new_solution)
         ###! Greedy, have to finish operators first
         self.new_solution, self.unassigned_tasks = self.operators.repair(self.new_solution, self.unassigned_tasks, self.technicians, self.tasks, self.distances, self.data, [self.shops, self.depots])
         print("right after repair")
         #print(self.new_solution)
+        self.current_unassigned_tasks = deepcopy(self.unassigned_tasks)
+
+        self.new_solution.updateCosts_Income(self.distances, self.tasks, self.unassigned_tasks)
         self.best_solution = deepcopy(self.new_solution)
         self.current_solution = deepcopy(self.new_solution)
 
@@ -1550,7 +1816,11 @@ class ALNS_ALgorithm:
 
 
     def generateNewSolution(self): # ***
-        self.new_solution, self.unassigned_tasks = self.operators.destroy(self.current_solution, self.unassigned_tasks)
+        for i in range(len(self.unassigned_tasks)):
+            self.unassigned_tasks[i].start_time = None
+            self.unassigned_tasks[i].end_time = None
+
+        self.new_solution, self.unassigned_tasks = self.operators.destroy(self.current_solution, self.unassigned_tasks, self.tasks)
         self.new_solution, self.unassigned_tasks = self.operators.repair(self.new_solution, self.unassigned_tasks, self.technicians, self.tasks, self.distances, self.data, [self.shops, self.depots])
         
 
@@ -1577,24 +1847,42 @@ class ALNS_ALgorithm:
         #while time.time() - start_time <= self.run_time:
         #    pass
         #return self.best_solution
-        for i in range(3):
+        for i in range(1):
             print("before 2nd print")
             #print(self.best_solution)
             self.selectOperators()
+            #print(self.unassigned_tasks)
+            #print()
             
+            print(self.unassigned_tasks)
             self.generateNewSolution()
 
-            if self.current_solution.totalMonetaryCost < self.new_solution.totalMonetaryCost:
+            self.new_solution.updateCosts_Income(self.distances,self.tasks, self.unassigned_tasks)
+
+            #print(self.new_solution.totalMonetaryCost + self.new_solution.forgottenTaskCost)
+            #print(self.current_solution.totalMonetaryCost + self.current_solution.forgottenTaskCost)
+            #print(self.best_solution.totalMonetaryCost + self.best_solution.forgottenTaskCost)
+            print("moneys")
+            print(self.new_solution.weight)
+            print(self.current_solution.weight)
+            print(self.best_solution.weight)
+
+
+
+            if self.current_solution.weight  < self.new_solution.weight:
                 self.score = 1
             else:
                 self.score = 3
             
-            if self.new_solution.totalMonetaryCost < self.best_solution.totalMonetaryCost:
+            if self.new_solution.weight < self.best_solution.weight:
                 self.best_solution = self.new_solution
                 self.score = 5
 
             if self.acceptSimulatedAnnealingFunction():
                 self.current_solution = self.new_solution
+                self.current_unassigned_tasks = deepcopy(self.unassigned_tasks)
+            else:
+                self.unassigned_tasks = deepcopy(self.current_unassigned_tasks)
 
             self.updateWeights()
             self.simulatedAnnealing_temperature *= self.simulatedAnnealing_cooling
@@ -1611,4 +1899,3 @@ if __name__ == "__main__":
     solution = algorithm.initialize()
     print(solution)
 
-    
