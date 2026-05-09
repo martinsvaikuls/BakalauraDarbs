@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 import urls
+import weather
 
 VANSIZE = 120
 TASK_OVERTIME = datetime.timedelta(minutes=15)
@@ -172,7 +173,7 @@ class Distances:
                 for row in reader:
                     a = Distance_Node(row["a_nodetype"], int(row["a_id"]))
                     b = Distance_Node(row["b_nodetype"], int(row["b_id"]))
-                    
+
                     self.distances[(a,b)] = (float(row["distance"]),float(row["duration"]))
                     
                    
@@ -189,6 +190,9 @@ class Distances:
         return math.hypot(dx, dy)/50*60
         #return (math.hypot(a[0] - b[0], a[1] - b[1]))*60
 
+    def get_distance_api(self, a: Distance_Node, b: Distance_Node):
+        
+        return self.distances[(a, b)][1]
 
     def get_distance(self, a: Distance_Node, b: Distance_Node):
         if (a, b) not in self.distances:
@@ -249,6 +253,7 @@ class Distances:
         pass
 
 
+import xarray as xr
 class Weather: 
     def __init__(self):
         self.average = 160.932
@@ -257,10 +262,81 @@ class Weather:
         self.snow = 446.264
         self.wind = 163.668
         self.weatherType = 1
+
+        self.ds = xr.open_dataset(
+            urls.weather,
+            engine="cfgrib",
+            backend_kwargs={"errors": "ignore"}
+        )
         
 
-    def getWeather():
-        pass
+
+    def get_temp(self, ds, coord, time):
+        lat, long = coord
+        temp = (ds["t2m"] - 273.15).sel(
+            time=time,
+            latitude=lat,
+            longitude=long,
+            method="nearest"
+        )
+        return float(temp)
+    
+    def get_cloud():
+        lat, long = coord
+        clouds = (ds["tcc"] - 273.15).sel(
+            time=time,
+            latitude=lat,
+            longitude=long,
+            method="nearest"
+        )
+
+
+        return float()
+    
+    def get_wind():
+        lat, long = coord
+        clouds = (ds["u10"] - 273.15).sel(
+            time=time,
+            latitude=lat,
+            longitude=long,
+            method="nearest"
+        )
+
+        clouds = (ds["v10"] - 273.15).sel(
+            time=time,
+            latitude=lat,
+            longitude=long,
+            method="nearest"
+        )
+
+        
+        return float()
+    
+    def get_percipitation():
+        lat, long = coord
+        clouds = (ds["tp"] - 273.15).sel(
+            time=time,
+            latitude=lat,
+            longitude=long,
+            method="nearest"
+        )
+
+        return float()
+
+    def getWeather(self, start: Distance_Node, end: Distance_Node, travel_start_time, travel_end_time, distances):
+
+        coord_start = distances.coords[start]
+        coord_end = distances.coords[end] # uses nearest
+
+        
+        
+
+        temp_start = self.get_temp(ds, coord_start, travel_start_time)
+        temp_end = self.get_temp(ds, coord_end, travel_end_time)
+
+        
+
+        return cost
 
 
     def getPenalty(self, weatherType):
