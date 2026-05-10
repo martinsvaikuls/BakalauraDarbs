@@ -15,7 +15,9 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 import urls
-import weather
+
+#import weather
+import xarray as xr
 
 VANSIZE = 120
 TASK_OVERTIME = datetime.timedelta(minutes=15)
@@ -148,10 +150,154 @@ class Distance_Node:
     id:  int
 
 
+class Weather: 
+    def __init__(self):
+        # crashes per 100 million km 
+        #self.average = 160.932
+        #self.sunshine = 197.624
+        #self.rain = 226.109
+        #self.snow = 446.264
+
+        self.wind_multiplier = 1.017 #163.668/160.932
+        # cost per km
+        # cost per crash 26081 (T. R. Miller & A. S. McKnight, 2021)
+        self.average = 0.04197
+        self.sunshine = 0.05154
+        self.rain = 0.05897
+        self.snow = 0.11639
+
+        self.sunshine_slow = 1
+        self.rain_slow = 1.06
+        self.snow_slow = 1.11
+        self.wind_slow = 1
+
+        self.ds = xr.open_dataset(
+            urls.weather,
+            engine="cfgrib",
+            backend_kwargs={"errors": "ignore"}
+        )
+        
+        self.t2m = self.ds["t2m"] 
+        self.u10 = self.ds["u10"]
+        self.v10 = self.ds["v10"]
+        self.tcc = self.ds["tcc"]
+        self.tp = xr.open_dataset(urls.weather, engine="cfgrib", filter_by_keys={'shortName':'tp'})
+
+    def get_data(self, data_type, coord, time):
+        lat, long = coord
+        return data_type.sel(
+            time=time,
+            latitude=lat,
+            longitude=long,
+            method="nearest"
+            )
+
+    def get_temp(self, coord, time):
+        temp = self.get_data(self.t2m, coord, time)
+
+        return float(temp)
+    
+    def get_cloud(self, coord, time):
+        clouds = self.get_data(self.tcc, coord, time)
+
+        return float(clouds)
+    
+    def get_wind(self, coord, time):
+        wind_u = self.get_data(self.u10, coord, time)
+        wind_v = self.get_data(self.v10, coord, time)
+
+        return float(wind_u), float(wind_v) 
+    
+    def cross_wind(self, wind_u, wind_v, coord_start, coord_end, route_length):
+        lat1, lon1 = coord_start
+        lat2, lon2 = coord_end
+        dx = (lon2 - lon1) * 111.32 * math.cos(math.radians((lat1 + lat2) / 2))
+        dy = (lat2 - lat1) * 110.574
+
+        if route_length == 0:
+            return 0.0
+        
+        cross_winds = abs(wind_u * dy - wind_v * dx) / (route_length*1000)
+
+        return cross_winds
+
+    def get_percipitation(self, coord, time):
+        lat, lon = coord
+ 
+        
+        tp_location = self.tp.sel(latitude=lat, longitude=lon, method="nearest")
+        
+ 
+        base_time = tp_location["time"].sel(time=time, method="nearest")
+        tp_time = tp_location.sel(time=base_time)
+        
+
+        dt_seconds = np.abs(tp_time["valid_time"].values - np.datetime64(time))
+        nearest_step = int(dt_seconds.argmin())
+
+        percipitation = float(tp_time["tp"].isel(step=nearest_step).values) * 1000
+
+        
+        if np.isnan(percipitation):
+            return 0.0
+        return percipitation
+   
+
+    def getWeather(self, start: Distance_Node, end: Distance_Node, travel_start_time, travel_end_time, distances):
+        cost_per_km = self.average
+        slow_downFactor = 1.0
+        coord_start = distances.coords[start]
+        coord_end = distances.coords[end] # uses nearest
+
+        route_length = distances.get_distance(start,end)
+
+
+        temp_start = self.get_temp(coord_start, travel_start_time)
+        temp_end = self.get_temp(coord_end, travel_end_time)
+
+        cloud_start = self.get_cloud(coord_start, travel_start_time)
+        cloud_end = self.get_cloud(coord_end, travel_end_time)
+
+        wind_start = self.get_wind(coord_start, travel_start_time)
+        wind_end = self.get_wind(coord_end, travel_end_time)
+
+        crosswinds_start = self.cross_wind(wind_start[0], wind_start[1], coord_start, coord_end, route_length)
+        crosswinds_end = self.cross_wind(wind_end[0], wind_end[1], coord_start, coord_end, route_length)
+
+        percipitation_start = self.get_percipitation(coord_start, travel_start_time)
+        percipitation_end = self.get_percipitation(coord_end, travel_end_time)    
+
+        temp_average = (temp_end + temp_start)/2 - 273.15 
+        cloud_average = (cloud_start + cloud_end)/2 
+        cross_wind_average = (crosswinds_start + crosswinds_end)/2
+        percipitation_average = (percipitation_start + percipitation_end)/2
+        
+        #print(temp_average, percipitation_average, cross_wind_average)
+
+        if temp_average < 0.0 and percipitation_average >= 0.1:
+            slow_downFactor = self.snow_slow
+            cost_per_km = self.snow
+        elif temp_average >= 0.0 and percipitation_average >= 0.1:
+            slow_downFactor = self.rain_slow
+            cost_per_km = self.rain
+
+        if cross_wind_average >= 25.0:
+            cost_per_km *= self.wind_multiplier
+            #slow_downFactor = slow_downFactor
+            
+        return cost_per_km, slow_downFactor
+
+
+    def __str__(self):
+        pass
+
 class Distances: 
     def __init__(self):
         #self.distances: Dict[Tuple[Distance_Node, Distance_Node], float] = {}
         self.distances: Dict[Tuple[Distance_Node, Distance_Node], tuple[float,float]] = {}
+        self.weather: Dict[Tuple[Distance_Node, Distance_Node, datetime.datetime], tuple[float,float]] = {}
+        
+        #self.distances: Dict[Tuple[Distance_Node, Distance_Node], tuple[float,float,float,float]] = {} # distance, duration, weather_costFactor, weather_slowDown
         self.coords: Dict[Distance_Node, Tuple[float, float]] = {}
 
 
@@ -178,6 +324,23 @@ class Distances:
                     
                    
             infile.close()
+
+        weather_file = urls.weather_cahce
+        file_exists = os.path.exists(weather_file)
+        existing_keys = set()
+        
+        if file_exists:
+            with open(weather_file, 'r', newline='', encoding='utf-8') as infile:
+                reader = csv.DictReader(infile, delimiter=';')
+                for row in reader:
+                    a = Distance_Node(row["a_nodetype"], int(row["a_id"]))
+                    b = Distance_Node(row["b_nodetype"], int(row["b_id"]))
+                    c = datetime.datetime.fromisoformat(str(row["time"]))
+
+                    self.weather[(a,b,c)] = (float(row["cost_factor"]),float(row["slow_downFactor"]))
+                    
+                   
+            infile.close()
         return
 
     def euclidean_distance(self, a,b):
@@ -187,28 +350,55 @@ class Distances:
         dx = (lon2 - lon1) * 111.32 * math.cos(math.radians((lat1 + lat2) / 2))
         dy = (lat2 - lat1) * 110.574
 
-        return math.hypot(dx, dy)/50*60
+
+        duration = 0
+        return math.hypot(dx, dy)/50*60, duration
         #return (math.hypot(a[0] - b[0], a[1] - b[1]))*60
 
     def get_distance_api(self, a: Distance_Node, b: Distance_Node):
         
         return self.distances[(a, b)][1]
 
-    def get_distance(self, a: Distance_Node, b: Distance_Node):
+    def get_distance(self, a: Distance_Node, b: Distance_Node): #
         if (a, b) not in self.distances:
             self.update_distance(a,b)
+
+        
              
         return self.distances[(a, b)][0]
 
+    def get_weather(self, a: Distance_Node, b: Distance_Node, start, end, weather: Weather):
+        nearest_hour_start = None
+        
+        if start.minute >= 30:
+        # Round up
+            nearest_hour_start = start.replace(minute=0) + datetime.timedelta(hours=1)
+        else:
+            # Round down
+            nearest_hour_start = start.replace(minute=0)
+
+        nearest_hour_start = nearest_hour_start.replace(second=0, microsecond=0)
+        if (a,b,nearest_hour_start) not in self.weather:
+            self.update_weather(a,b,nearest_hour_start,end,weather)
+
+        return self.weather
 
     def update_distance(self, a,b): # ! 
         coord_a = self.coords[a]
         coord_b = self.coords[b]
 
-        distance = self.euclidean_distance(coord_a,coord_b)
-        duration = 0
+        distance,duration = self.euclidean_distance(coord_a,coord_b)
+
+        
+
         self.distances[(a,b)] = (distance,duration)
         self.distances[(b,a)] = (distance,duration)
+
+    def update_weather(self,a,b,start,end,weather):
+        cost_factor, slow_downFactor = weather.getWeather(a,b,start,end,self)
+        
+        self.weather[(a,b,start)] = (cost_factor,slow_downFactor)
+        self.weather[(b,a,start)] = (cost_factor,slow_downFactor)
 
 
     def cache(self):
@@ -246,6 +436,47 @@ class Distances:
                 writer.writerow(row)
             
         outfile.close()
+
+
+        weather_file = urls.weather_cahce
+        file_exists = os.path.exists(weather_file)
+        existing_keys = set()
+
+        if file_exists:
+            with open(weather_file, 'r', newline='', encoding='utf-8') as infile:
+                reader = csv.DictReader(infile, delimiter=';')
+                for row in reader:
+                    key = (
+                        row["a_nodetype"], int(row["a_id"]),
+                        row["b_nodetype"], int(row["b_id"]),
+                        datetime.datetime.fromisoformat(str(["time"]))
+                    )
+                    existing_keys.add(key)
+                   
+            infile.close()
+
+        with open(weather_file, 'a', newline='', encoding='utf-8') as outfile: 
+            fieldnames = ["a_nodetype","a_id","b_nodetype","b_id","time","cost_factor","slow_downFactor"]
+            writer = csv.DictWriter(outfile, fieldnames=fieldnames, delimiter=';')
+            
+            if not file_exists:
+                writer.writeheader()
+
+            for keys, values in self.weather.items():
+                key = (keys[0].node_type,keys[0].id,keys[1].node_type,keys[1].id,keys[2])
+                
+                if key in existing_keys:
+                    continue
+
+                row = {"a_nodetype":keys[0].node_type,"a_id":keys[0].id,"b_nodetype":keys[1].node_type,"b_id":keys[1].id,
+                       "time":keys[2],
+                       "cost_factor":values[0],"slow_downFactor":values[1]}
+
+                writer.writerow(row)
+            
+        outfile.close()
+
+
         return
 
 
@@ -253,101 +484,8 @@ class Distances:
         pass
 
 
-import xarray as xr
-class Weather: 
-    def __init__(self):
-        self.average = 160.932
-        self.sunshine = 197.624
-        self.rain = 226.109
-        self.snow = 446.264
-        self.wind = 163.668
-        self.weatherType = 1
-
-        self.ds = xr.open_dataset(
-            urls.weather,
-            engine="cfgrib",
-            backend_kwargs={"errors": "ignore"}
-        )
-        
 
 
-    def get_temp(self, ds, coord, time):
-        lat, long = coord
-        temp = (ds["t2m"] - 273.15).sel(
-            time=time,
-            latitude=lat,
-            longitude=long,
-            method="nearest"
-        )
-        return float(temp)
-    
-    def get_cloud():
-        lat, long = coord
-        clouds = (ds["tcc"] - 273.15).sel(
-            time=time,
-            latitude=lat,
-            longitude=long,
-            method="nearest"
-        )
-
-
-        return float()
-    
-    def get_wind():
-        lat, long = coord
-        clouds = (ds["u10"] - 273.15).sel(
-            time=time,
-            latitude=lat,
-            longitude=long,
-            method="nearest"
-        )
-
-        clouds = (ds["v10"] - 273.15).sel(
-            time=time,
-            latitude=lat,
-            longitude=long,
-            method="nearest"
-        )
-
-        
-        return float()
-    
-    def get_percipitation():
-        lat, long = coord
-        clouds = (ds["tp"] - 273.15).sel(
-            time=time,
-            latitude=lat,
-            longitude=long,
-            method="nearest"
-        )
-
-        return float()
-
-    def getWeather(self, start: Distance_Node, end: Distance_Node, travel_start_time, travel_end_time, distances):
-
-        coord_start = distances.coords[start]
-        coord_end = distances.coords[end] # uses nearest
-
-        
-        
-
-        temp_start = self.get_temp(ds, coord_start, travel_start_time)
-        temp_end = self.get_temp(ds, coord_end, travel_end_time)
-
-        
-
-        return cost
-
-
-    def getPenalty(self, weatherType):
-        if weatherType == 1:
-            return self.average
-        elif weatherType == 1:
-            return self.average
-    
-
-    def __str__(self):
-        pass
 
 
 class Solution: 
@@ -435,6 +573,7 @@ class Solution:
         for tech_id, cr in changedRoute.items():
             if cr:
                 current_tech_position = Distance_Node(NodeType.TECH, tech_id)
+                current_tech_postiion_time = None
                 cost_monetary = 0.0
 
                 duration_work = 0.0
@@ -677,11 +816,11 @@ class Operators:
                 return self.destroy_ops.type(solution, unassigned_tasks)
             
 
-    def repair(self, solution, unassigned_tasks, technicians, tasks, distances, data, restocking_nodes):
+    def repair(self, solution, unassigned_tasks, technicians, tasks, distances, data, restocking_nodes,weather):
         self.chosen_repair = 0
         match self.chosen_repair:
             case 0:
-                return self.repair_ops.greedy(solution, unassigned_tasks, technicians, tasks, distances, data, restocking_nodes)
+                return self.repair_ops.greedy(solution, unassigned_tasks, technicians, tasks, distances, data, restocking_nodes,weather)
             case 1:
                 return self.repair_ops.regret(solution, unassigned_tasks, technicians, tasks, distances, data, restocking_nodes)
             case 2:
@@ -856,7 +995,7 @@ class Repair_Operator:
     def __init__(self):
         pass
 
-    def calculateRouteCost(self,  route, distances, tasks, data): #start, end, id,
+    def calculateRouteCost(self,  route, distances, tasks, data, weather=None): #start, end, id,
         totatTravel = 0
         resource_cost_total = 0
         totalTime = 0
@@ -883,8 +1022,14 @@ class Repair_Operator:
             if route[i].node_type == NodeType.SHOP:
                 shop = True
 
-
-            totatTravel += distances.get_distance(Distance_Node(route[i].node_type, route[i].id),Distance_Node(route[i+1].node_type, route[i+1].id))
+            start = Distance_Node(route[i].node_type, route[i].id)
+            end = Distance_Node(route[i+1].node_type, route[i+1].id)
+            travel = distances.get_distance(start,end)
+            totatTravel += travel
+            if weather != None:
+                distances.get_weather(start, end, 
+                                      route[i].end_time, route[i].end_time+datetime.timedelta(minutes=travel),
+                                      weather)
             totalTime += totatTravel * 60
 
         if shop:
@@ -1736,7 +1881,7 @@ class Repair_Operator:
 
     
 
-    def greedy(self, solution, unassigned_tasks, technicians, tasks, distances, data, restocking_nodes):
+    def greedy(self, solution, unassigned_tasks, technicians, tasks, distances, data, restocking_nodes, weather):
         new_solution = solution.copy()
         indx = 0
         indx3 = 0
@@ -1815,7 +1960,7 @@ class Repair_Operator:
                             #for new_node in new_nodes:
                             #    new_cost += self.calculateRouteCost(new_node.start_time,new_node.end_time,new_node.id,new_route, distances, tasks) 
                             
-                            new_cost = self.calculateRouteCost(new_route, distances, tasks, data)
+                            new_cost = self.calculateRouteCost(new_route, distances, tasks, data, weather)
                             difference = new_cost - old_cost 
                             #candidates.append((difference, new_nodes, new_route, tech.master_id, position, task.id))
                             candidates.append((difference, new_route, tech.master_id, position, task.id))
@@ -1944,6 +2089,7 @@ class ALNS_ALgorithm:
         self.shops = {}
         self.depots = {}
         self.data = Resource_Data()
+        self.weather = Weather()
         
 
 
@@ -2055,7 +2201,7 @@ class ALNS_ALgorithm:
             self.unassigned_tasks.append(Route_Node(NodeType.TASK, id, start_time=None, end_time=None))
         #print(self.new_solution)
         ###! Greedy, have to finish operators first
-        self.new_solution, self.unassigned_tasks = self.operators.repair(self.new_solution, self.unassigned_tasks, self.technicians, self.tasks, self.distances, self.data, [self.shops, self.depots])
+        self.new_solution, self.unassigned_tasks = self.operators.repair(self.new_solution, self.unassigned_tasks, self.technicians, self.tasks, self.distances, self.data, [self.shops, self.depots],self.weather)
         print("right after repair")
         #print(self.new_solution)
         self.current_unassigned_tasks = deepcopy(self.unassigned_tasks)
@@ -2075,7 +2221,7 @@ class ALNS_ALgorithm:
             self.unassigned_tasks[i].end_time = None
 
         self.new_solution, self.unassigned_tasks = self.operators.destroy(self.current_solution, self.unassigned_tasks, self.tasks)
-        self.new_solution, self.unassigned_tasks = self.operators.repair(self.new_solution, self.unassigned_tasks, self.technicians, self.tasks, self.distances, self.data, [self.shops, self.depots])
+        self.new_solution, self.unassigned_tasks = self.operators.repair(self.new_solution, self.unassigned_tasks, self.technicians, self.tasks, self.distances, self.data, [self.shops, self.depots],self.weather)
         
 
     def acceptSimulatedAnnealingFunction(self): # ***
