@@ -377,7 +377,7 @@ class Distances:
             # Round down
             nearest_hour_start = start.replace(minute=0)
 
-        nearest_hour_start = nearest_hour_start.replace(second=0, microsecond=0)
+        nearest_hour_start = (nearest_hour_start.replace(second=0, microsecond=0)).isoformat()
         if (a,b,nearest_hour_start) not in self.weather:
             self.update_weather(a,b,nearest_hour_start,end,weather)
 
@@ -449,7 +449,7 @@ class Distances:
                     key = (
                         row["a_nodetype"], int(row["a_id"]),
                         row["b_nodetype"], int(row["b_id"]),
-                        datetime.datetime.fromisoformat(str(["time"]))
+                        datetime.datetime.fromisoformat(str(row["time"]))
                     )
                     existing_keys.add(key)
                    
@@ -761,7 +761,7 @@ class Operators:
         self.chosen_destroy = 0
         self.chosen_repair = 0
 
-        self.weights_destroy = [1.0] * 6
+        self.weights_destroy = [1.0] * 5
         self.weights_repair = [1.0] * 3
 
         self.score = 0
@@ -790,17 +790,20 @@ class Operators:
                 break
     
 
-    def destroy(self, solution, unassigned_tasks,task):
+    def destroy(self, solution, unassigned_tasks, tasks, relatedness):
         #self.chosen_destroy = 0
-        if self.chosen_destroy == 3:
+        """if self.chosen_destroy == 3:
             self.chosen_destroy = 0
         if self.chosen_destroy == 4:
             self.chosen_destroy = 1
         if self.chosen_destroy == 5:
             self.chosen_destroy = 2
-        self.chosen_destroy = 4
-        #print(self.chosen_destroy)
-
+        self.chosen_destroy = 3
+        #print(self.chosen_destroy)"""
+        self.chosen_destroy = 1
+        print("destroyer: ", self.chosen_destroy)
+        #if self.chosen_destroy == 1:
+        #    self.chosen_destroy = 4
         match self.chosen_destroy:
             case 0:
                 return self.destroy_ops.random(solution, unassigned_tasks)
@@ -809,22 +812,23 @@ class Operators:
             case 2:
                 return self.destroy_ops.critical(solution, unassigned_tasks) #! after a while does nothing (no change at all, no randomness)
             case 3:
-                return self.destroy_ops.shaw(solution, unassigned_tasks)
+                return self.destroy_ops.shaw(solution, unassigned_tasks,relatedness)
             case 4:
-                return self.destroy_ops.skill(solution, unassigned_tasks,task)
-            case 5:
-                return self.destroy_ops.type(solution, unassigned_tasks)
+                return self.destroy_ops.skill(solution, unassigned_tasks, tasks)
+            #case 5:
+            #    return self.destroy_ops.type(solution, unassigned_tasks)
             
 
     def repair(self, solution, unassigned_tasks, technicians, tasks, distances, data, restocking_nodes,weather):
+        #if self.chosen_repair == 2:
         self.chosen_repair = 0
         match self.chosen_repair:
             case 0:
                 return self.repair_ops.greedy(solution, unassigned_tasks, technicians, tasks, distances, data, restocking_nodes,weather)
             case 1:
-                return self.repair_ops.regret(solution, unassigned_tasks, technicians, tasks, distances, data, restocking_nodes)
+                return self.repair_ops.regret(solution, unassigned_tasks, technicians, tasks, distances, data, restocking_nodes,weather)
             case 2:
-                return self.repair_ops.random(solution, unassigned_tasks, technicians, tasks, distances, data, restocking_nodes)
+                return self.repair_ops.random(solution, unassigned_tasks, technicians, tasks, distances, data, restocking_nodes,weather)
 
 
     def renew_weights(self, score):
@@ -857,13 +861,16 @@ class Destroy_Operator:
         k = int(max(1, len(all_nodes) * 0.1))
         removed_nodes = random.sample(all_nodes, k)
         print()
+        print()
 
         for tech_id, node in removed_nodes:
             if not new_solution.changedRoute[tech_id]:
                 new_solution.routes[tech_id] = solution.routes[tech_id].copy()
-            
+            if node.node_type != NodeType.TASK:
+                continue
             new_solution.routes[tech_id].remove(node)
             unassigned_tasks.append(node)
+            print(node)
 
             new_solution.changedRoute[tech_id] = True
 
@@ -885,7 +892,8 @@ class Destroy_Operator:
             if not new_solution.changedRoute[tech_id]:
                 new_solution.routes[tech_id] = solution.routes[tech_id].copy()
 
-            new_solution.routes[tech_id] = []
+        
+            new_solution.routes[tech_id] = [node for node in route if node.node_type != NodeType.TASK]
 
             for node in route:
                 if node.node_type == NodeType.TASK:
@@ -917,6 +925,8 @@ class Destroy_Operator:
 
         for tech_id, node in all_nodes:
             if node.id in expensive_tasks:
+                if node.node_type != NodeType.TASK:
+                    continue
                 if not new_solution.changedRoute[tech_id]:
                     new_solution.routes[tech_id] = solution.routes[tech_id].copy()
                 
@@ -929,26 +939,69 @@ class Destroy_Operator:
         return new_solution, unassigned_tasks
     
 
-    def shaw(self,solution, unassigned_tasks): ### needs relatedness
+
+    def shaw(self,solution, unassigned_tasks, relateddness): ### needs relatedness
+        #! Travel time, duration, time window and penalty are used to define
+        #! task-relatedness. The most related tasks are unassigned 
+        #* extra resources and skills 
+        
         new_solution = solution.copy()
 
+        k = int(len(relateddness)*0.1)
+        i = 0
+        removed_tasks = False
+        while not removed_tasks:
+            for key, value in relateddness.items():
+                #print(key)
+                #print(value)
+                if i >= k:
+                    removed_tasks = True
+                    break
+                key_1_is = False
+                key_2_is = False
+                tech_id_1 = 0
+                node_id_1 = 0
+                tech_id_2 = None
+                node_id_2 = None
+                for tech, route in new_solution.routes.items():
+                    
+                    for node in route:
+                        if node.node_type == NodeType.TASK:
+                            if key[0] == node.id:
+                                key_1_is = True
+                                tech_id_1 = tech
+                                node_id_1 = node
+                            if key[1] == node.id:
+                                key_2_is = True
+                                tech_id_2 = tech
+                                node_id_2 = node
 
-
+                if key_1_is and key_2_is:
+                    new_solution.routes[tech_id_1].remove(node_id_1)
+                    new_solution.routes[tech_id_2].remove(node_id_2)
+                    unassigned_tasks.append(node_id_1)
+                    unassigned_tasks.append(node_id_2)
+                    print(node_id_2)
+                    i += 1
+            break
+        #print(unassigned_tasks)
         return new_solution, unassigned_tasks
     
 
-    def skill(self,solution, unassigned_tasks, tasks): ### ! not finished
+    def skill(self, solution, unassigned_tasks, tasks): ### ! not finished
         new_solution = solution.copy()
 
         all_nodes = [
         (tech_id, node)
         for tech_id, route in new_solution.routes.items()
-        for node in route
-        if node.node_type == NodeType.TASK
+            for node in route
+                if node.node_type == NodeType.TASK
         ]
-
+        #print(solution)
+        #print(all_nodes)
         skills_set = set()
         for tech_id, node in all_nodes:
+            print(node)
             skills_set.update(tasks[node.id].skills)
 
         skills = []
@@ -956,6 +1009,8 @@ class Destroy_Operator:
             skills.append(skill)
 
         k = int(max(1, len(skills) * 0.1))
+        #print(k)
+        #print(skills)
         chosen_skills = random.sample(skills, k)
         k_tasks = int(max(1, len(all_nodes) * 0.05))
         
@@ -964,6 +1019,8 @@ class Destroy_Operator:
         for skill in chosen_skills:
             removed_task_count = 0
             for tech_id, node in all_nodes:
+                if node.node_type != NodeType.TASK:
+                    continue
                 if removed_task_count == k_tasks:
                     break
                 current_task = tasks[node.id]
@@ -981,7 +1038,7 @@ class Destroy_Operator:
         return new_solution, unassigned_tasks
     
 
-    def type(self,solution, unassigned_tasks): ### needs types
+    def type(self,solution, unassigned_tasks): ### needs types # don't have types unless skills and resources is a type
         new_solution = solution.copy()
 
         return new_solution, unassigned_tasks  
@@ -1882,6 +1939,9 @@ class Repair_Operator:
     
 
     def greedy(self, solution, unassigned_tasks, technicians, tasks, distances, data, restocking_nodes, weather):
+        #print(solution)
+        #print()
+        #print(technicians)
         new_solution = solution.copy()
         indx = 0
         indx3 = 0
@@ -1893,15 +1953,9 @@ class Repair_Operator:
         while unassigned_tasks and indx3 < iters+5: ### set itteration count for stopping inf loop, ### no infinite loop because of pop
             candidates = []
             for task in unassigned_tasks:
-                if task.id == 60 or task.id == 63:
-                    continue
-                task_count =0
-                tech_count =0
+
                 for tech_id, tech in technicians.items():
-                    #if tech_id == 35:
-                    #    continue
-                    #print(tech_id, end=" ")
-                    #print("TAAASKAAAAAAAAA: ", tech)
+                    #print(1)
                     if not self.assign_feasability(tasks[task.id], tech, distances): ### Checks if skills and time_window is within limits
                         continue
 
@@ -1916,7 +1970,7 @@ class Repair_Operator:
                     #route = new_solution.routes[tech.master_id]
                     indx2=0
 
-                    
+                    #print(route)
                     for position in range(len(route) - 2): 
                         
                         #print(indx2)
@@ -1941,6 +1995,10 @@ class Repair_Operator:
                             print(tech_count, task_count)
                             print(self.timeWindow_feasabilityTECH([route[position], new_task_insertion, route[position+1]], tech, distances, tasks))
                         """
+                        #print()
+                        #print(position)
+                        #print(route[:position])
+                        #return False
                         if not self.timeWindow_feasability([route[position], new_task_insertion, route[position+1]], tech, distances, tasks):
                             continue
                         #else:
@@ -1955,7 +2013,6 @@ class Repair_Operator:
                                 continue
                         
                         if feasable:
-                            
                             new_cost = 0.0 
                             #for new_node in new_nodes:
                             #    new_cost += self.calculateRouteCost(new_node.start_time,new_node.end_time,new_node.id,new_route, distances, tasks) 
@@ -2033,33 +2090,253 @@ class Repair_Operator:
         return new_solution, unfeasable_tasks
     
 
-    def regret(self, solution, unassigned_tasks, technicians, tasks, distances):
+    def regret(self, solution, unassigned_tasks, technicians, tasks, distances, data, restocking_nodes, weather):
+        #print(solution)
+        #print()
+        #print(technicians)
         new_solution = solution.copy()
-
+        indx = 0
+        indx3 = 0
         unfeasable_tasks = []
+        removable_tasks = []
+        iters = len(unassigned_tasks)
+        once = 0
+
+        while unassigned_tasks and indx3 < iters+5: ### set itteration count for stopping inf loop, ### no infinite loop because of pop
+            candidates = []
+            for task in unassigned_tasks:
+                insertion_nodes = []
+                for tech_id, tech in technicians.items():
+                    
+                    #print(route)
+                    #print(1)
+                    if not self.assign_feasability(tasks[task.id], tech, distances): ### Checks if skills and time_window is within limits
+                        continue
+
+                    
+                    old_cost = new_solution.monetaryCost[tech.master_id]
+                    new_task_insertion = Route_Node(NodeType.TASK, task.id, start_time=None, end_time=None) #task.start_tw
+                    #route = deepcopy(new_solution.routes[tech.master_id])
+                    route = []
+                    for node in new_solution.routes[tech.master_id]:
+                        if node.node_type in [NodeType.TASK, NodeType.TECH]:
+                            route.append(node)       
+                    #route = new_solution.routes[tech.master_id]
+                    indx2=0
+
+                    #print(route)
+
+                    for position in range(len(route) - 2):   
+                        position += 1 
+                        if route[position].node_type in [NodeType.SHOP, NodeType.DEPOT]: #! wat      task depo insertion task
+                            continue
+                        if route[position+1].node_type in [NodeType.SHOP, NodeType.DEPOT]: #! wat        task insertion depo task
+                            continue
+                        if not self.timeWindow_feasability([route[position], new_task_insertion, route[position+1]], tech, distances, tasks):
+                            continue
+                        #print()
+                        #print(position)
+                        #print(route[:position])
+                        new_route, feasable = self.task_insertion(route[:position], new_task_insertion, route[position:], tech, tasks, distances)
+
+                        if feasable: # ! restocking
+                            new_route, feasable = self.routeCost_and_feasability(new_route, tech, distances, tasks, data, restocking_nodes) 
+                            if not feasable:
+                                continue
+                        
+                        if feasable:
+
+                            cost = self.calculateRouteCost(new_route, distances, tasks, data, weather)
+                            insertion_nodes.append((cost, new_route, tech.master_id, position, task.id))
+                            indx2 +=1
+
+                if insertion_nodes:
+                    insertion_nodes.sort(key=lambda x: x[0])
+                    best_cost = insertion_nodes[0][0]
+                    if len(insertion_nodes) > 1:
+                        second_best_cost = insertion_nodes[1][0]
+                    else:
+                        second_best_cost = best_cost 
+
+                    regret_cost = second_best_cost - best_cost
+                    cost, new_route, tech_id, position, task_id = insertion_nodes[0]
+                    candidates.append((regret_cost, new_route, tech_id, position, task_id))
+                    #print(candidates)
+
+                if not candidates:
+                    is_inList = False
+                    for utask in unfeasable_tasks:
+                        if utask.id == task.id:
+                            is_inList = True
+                    if not is_inList:
+                        unfeasable_tasks.append(task)
+                        removable_tasks.append(task)
+    
+            indx3 +=1
+            #print(indx3)
+
+            if candidates:
+                once += 1
+                indx += 1
+                print(indx, end=" ")
+                if indx % 5 == 0:
+                    print()
+                for task in removable_tasks:
+                    unassigned_tasks = [t for t in unassigned_tasks if t.id != task.id]
+
+                candidates.sort(key=lambda x: x[0]) # negative on left and positive on right side
+
+                chosen = candidates[0]
+                cost, new_route, tech_id, pos, task_id = chosen
+
+
+                new_solution.routes[tech_id] = new_route
+                new_solution.changedRoute[tech_id] = True
+                printing = True
+                print()
+                
+                print(cost, end=" ")
+                print()
+                if printing:
+                    for node in new_route:
+                        if node.node_type == NodeType.TASK:
+                            print("TAAAAASK: ", node.node_type, node.id, node.start_time, node.end_time)
+                        elif node.node_type == NodeType.SHOP:
+                            print("SHOPPP: ", node.node_type, node.id, node.start_time, node.end_time)
+                        elif node.node_type == NodeType.DEPOT:
+                            print("DEPOOOOOT: ", node.node_type, node.id, node.start_time, node.end_time)
+                        else:
+                            print("TE: ", node.node_type, node.id, node.start_time, node.end_time)
+                print()
+                print()
+                #if indx > 30:
+                #    time.sleep(3)
+                unassigned_tasks = [t for t in unassigned_tasks if t.id != task_id]
 
 
         return new_solution, unfeasable_tasks
+
+
     
 
-    def random(self, solution, unassigned_tasks, technicians, tasks, distances):
+    def random(self, solution, unassigned_tasks, technicians, tasks, distances, data, restocking_nodes, weather):
         new_solution = solution.copy()
-
+        
         unfeasable_tasks = []
+        removable_tasks = []
+        tech_list = []
+
+  
+        indx = 0
+        indx3 = 0
+        iters = len(unassigned_tasks)
+        once = 0
+
+        for key, tech in technicians.items():
+            tech_list.append(tech)
         while unassigned_tasks:
-            tech = random.choice(technicians)
-            task_id = random.choice(unassigned_tasks)
-            if self.assign_feasability(tasks[task_id], tech): ### Checks if skills and time_window is within limits
-                route = new_solution.routes[tech.master_id]
+            candidates = []
 
-                for position in range(len(route)):
-                    new_route = route[:position] + Route_Node(NodeType.TASK, task_id, start_time=None, end_time=None) + route[position:]
-                    new_cost = self.route_cost(new_route, tech)
+            print("LENGHTHTH: ",len(unassigned_tasks))
+            task = random.choice(unassigned_tasks)
 
-                    #difference = new_cost - old_cost 
-                    #candidates.append((difference, tech.master_id, position, tasks[task_id]))
+            tech_list_index = list(range(len(tech_list)))
+            for i in range(len(technicians)):
+                feasable = False
+                index = random.choice(tech_list_index)
+                tech = tech_list[index]
+                tech_list_index.remove(index)
+            
+                if not self.assign_feasability(tasks[task.id], tech, distances): ### Checks if skills and time_window is within limits
+                    continue
+            
+                old_cost = new_solution.monetaryCost[tech.master_id]
+                new_task_insertion = Route_Node(NodeType.TASK, task.id, start_time=None, end_time=None) #task.start_tw
+                
+                route = []
+                for node in new_solution.routes[tech.master_id]:
+                    if node.node_type in [NodeType.TASK, NodeType.TECH]:
+                        route.append(node)    
 
+                for position in range(len(route) - 2):    
+                    feasable = False
+                    position += 1
+            
+                    if route[position].node_type in [NodeType.SHOP, NodeType.DEPOT]: #! wat      task depo insertion task
+                        continue
+                    if route[position+1].node_type in [NodeType.SHOP, NodeType.DEPOT]: #! wat        task insertion depo task
+                        continue
+                    if not self.timeWindow_feasability([route[position], new_task_insertion, route[position+1]], tech, distances, tasks):
+                        continue
 
+                    new_route, feasable = self.task_insertion(route[:position], new_task_insertion, route[position:], tech, tasks, distances)
+
+                    if feasable: # ! restocking
+                        new_route, feasable = self.routeCost_and_feasability(new_route, tech, distances, tasks, data, restocking_nodes) 
+                        if not feasable:
+                            continue
+                    
+                    if feasable:
+                        new_cost = 0.0 
+                        #for new_node in new_nodes:
+                        #    new_cost += self.calculateRouteCost(new_node.start_time,new_node.end_time,new_node.id,new_route, distances, tasks) 
+                        
+                        new_cost = self.calculateRouteCost(new_route, distances, tasks, data, weather)
+                        difference = new_cost - old_cost 
+                        #candidates.append((difference, new_nodes, new_route, tech.master_id, position, task.id))
+                        candidates.append((difference, new_route, tech.master_id, position, task.id))
+                            
+                        #indx2 +=1
+                        break
+                if feasable:
+                    break
+            
+            if not candidates:
+                is_inList = False
+                for utask in unfeasable_tasks:
+                    if utask.id == task.id:
+                        is_inList = True
+                if not is_inList:
+                    #print("aaaaaaaaaaaaaaaaaaaaaaaa")
+                    unfeasable_tasks.append(task)
+                    
+                    unassigned_tasks.remove(task)
+            
+            if candidates:
+                once += 1
+                indx += 1
+                print(indx, end=" ")
+                if indx % 5 == 0:
+                    print()
+
+                candidates.sort(key=lambda x: x[0])
+                chosen = candidates[0]
+                cost, new_route, tech_id, pos, task_id = chosen
+
+                new_solution.routes[tech_id] = new_route
+                new_solution.changedRoute[tech_id] = True
+                printing = True
+
+                if printing:
+                    for node in new_route:
+                        if node.node_type == NodeType.TASK:
+                            print("TAAAAASK: ", node.node_type, node.id, node.start_time, node.end_time)
+                        elif node.node_type == NodeType.SHOP:
+                            print("SHOPPP: ", node.node_type, node.id, node.start_time, node.end_time)
+                        elif node.node_type == NodeType.DEPOT:
+                            print("DEPOOOOOT: ", node.node_type, node.id, node.start_time, node.end_time)
+                        else:
+                            print("TE: ", node.node_type, node.id, node.start_time, node.end_time)
+                print()
+                print()
+                #if indx > 30:
+                #    time.sleep(3)
+                
+                unassigned_tasks.remove(task)
+
+                
+
+        #print(unfeasable_tasks)
         return new_solution, unfeasable_tasks
     
     def __str__(self):
@@ -2090,9 +2367,155 @@ class ALNS_ALgorithm:
         self.depots = {}
         self.data = Resource_Data()
         self.weather = Weather()
+        self.task_relatedness: Dict[Tuple[int,int], float] = {}
+        self.related_list = []
         
 
+    def normalize_values(self, dictionary):
+        values = list(dictionary.values())
+        min_val = min(values)
+        max_val = max(values)
+        
+        # Avoid division by zero if all values are equal
+        if min_val == max_val:
+            return {k: 1.0 for k in dictionary}
+        
+        return {key: (value - min_val) / (max_val - min_val) for key, value in dictionary.items()}
 
+    def relatedness(self):
+        #
+        # read existing data
+        relateddnz = urls.relatedness_cache
+        file_exists = os.path.exists(relateddnz)
+        existing_keys = set()
+
+        if file_exists:
+            with open(relateddnz, 'r', newline='', encoding='utf-8') as infile:
+                reader = csv.DictReader(infile, delimiter=';')
+                for row in reader:
+                    
+                    a = int(row["a_id"])
+                    b = int(row["b_id"])
+                    relatedness = float(row["related"])
+
+                    self.task_relatedness[(a,b)] = relatedness
+                    if a not in self.related_list:
+                        self.related_list.append(a)
+                    
+                    if b not in self.related_list:
+                        self.related_list.append(b)
+                   
+            infile.close()
+        #
+        relatedness_duration: Dict[Tuple[int,int], float] = {}
+        relatedness_resource: Dict[Tuple[int,int], float] = {}
+        relatedness_skill: Dict[Tuple[int,int], float] = {}
+        relatedness_timeWindow: Dict[Tuple[int,int], float] = {}
+        
+
+        for id_1, task_1 in self.tasks.items():
+            #print(task_1)
+            if task_1 in self.related_list:
+                continue
+            for id_2, task_2 in self.tasks.items():
+                #print("taks2: ", task_2)
+                if task_1.id == task_2.id:
+                    continue
+                if not relatedness_duration: 
+                    if (task_2.id,task_1.id) in relatedness_duration:
+                        continue
+                #print(relatedness_duration)
+
+                relatedness_duration[(task_1.id,task_2.id)] = 1
+                relatedness_resource[(task_1.id,task_2.id)] = 1
+                relatedness_skill[(task_1.id,task_2.id)] = 1
+                relatedness_timeWindow[(task_1.id,task_2.id)] = 1
+
+                
+
+                
+                relatedness_duration[(task_1.id,task_2.id)] = abs(task_1.duration-task_2.duration)
+                
+                for resource_1 in task_1.resources:
+                    if resource_1 in task_2.resources:
+                        relatedness_resource[(task_1.id,task_2.id)] +=1
+   
+                for skill_1 in task_1.skills:
+                    if skill_1 in task_2.skills:
+                        relatedness_skill[(task_1.id,task_2.id)] += 1
+
+                #relatedness_timeWindow = #??
+                relatedness_timeWindow[(task_1.id,task_2.id)] = min(task_1.end_tw, task_2.end_tw) - max(task_1.start_tw, task_2.start_tw)
+
+
+
+            self.related_list.append(task_1.id)
+            
+        # normalize all relatedness and create task_relatendess without distances
+        relatedness_duration = self.normalize_values(relatedness_duration)
+        relatedness_resource = self.normalize_values(relatedness_resource)
+        relatedness_skill = self.normalize_values(relatedness_skill)
+        relatedness_timeWindow = self.normalize_values(relatedness_timeWindow)
+
+        ## count into one relatedness and then top 20% get their relatedness added with distances
+        for key in relatedness_duration.keys():
+            duration = relatedness_duration[key]
+            resource = relatedness_resource[key]
+            skill = relatedness_skill[key]
+            timeWindow = relatedness_timeWindow[key]
+
+            self.task_relatedness[key] = duration + resource + skill + timeWindow 
+
+        #print(self.task_relatedness)
+        self.task_relatedness = dict(sorted(self.task_relatedness.items(), key=lambda x: x[1], reverse=True))
+        #print(self.task_relatedness)
+        """top_count = max(1, int(len(self.tasks) * 0.2))
+        sorted_top_pairs = sorted(self.task_relatedness.items(), key=lambda x: x[1], reverse=True)[:top_count]
+
+        for i in len(sorted_top_pairs):
+            a = Distance_Node(NodeType.TASK, sorted_top_pairs[0])
+            b = Distance_Node(NodeType.TASK, sorted_top_pairs[0])
+
+            distance = self.distances.get_distance(a,b)"""
+
+        #! cache data
+        relatedness_file = urls.relatedness_cache
+        file_exists = os.path.exists(relatedness_file)
+        existing_keys = set()
+
+        if file_exists:
+            with open(relatedness_file, 'r', newline='', encoding='utf-8') as infile:
+                reader = csv.DictReader(infile, delimiter=';')
+                for row in reader:
+                    key = (
+                        int(row["a_id"]),
+                        int(row["b_id"])
+                    )
+                    existing_keys.add(key)
+                   
+            infile.close()
+
+        with open(relatedness_file, 'a', newline='', encoding='utf-8') as outfile: 
+            fieldnames = ["a_id","b_id","related"]
+            writer = csv.DictWriter(outfile, fieldnames=fieldnames, delimiter=';')
+            
+            if not file_exists:
+                writer.writeheader()
+
+            for keys, values in self.task_relatedness.items():
+                key = (keys[0],keys[1])
+                
+                if key in existing_keys:
+                    continue
+
+                row = {"a_id":keys[0],"b_id":keys[1],
+                       "related":values}
+
+                writer.writerow(row)
+            
+        outfile.close()
+
+        
     def readData(self): # ***
         path = urls.taskFilePath
         with open(path) as f:
@@ -2149,7 +2572,7 @@ class ALNS_ALgorithm:
         self.distances.add_coords(NodeType.SHOP, self.shops)
 
         self.distances.add_distances_from_file()
-
+        self.relatedness()
         #?self.distances = self.distances.add_coords(NodeType.DEPOT, self.tasks)
         #?self.distances = self.distances.add_coords(NodeType.SHOP, self.tasks)
 
@@ -2219,8 +2642,10 @@ class ALNS_ALgorithm:
         for i in range(len(self.unassigned_tasks)):
             self.unassigned_tasks[i].start_time = None
             self.unassigned_tasks[i].end_time = None
-
-        self.new_solution, self.unassigned_tasks = self.operators.destroy(self.current_solution, self.unassigned_tasks, self.tasks)
+        print(len(self.unassigned_tasks))
+        print(len(self.tasks))
+        #if 
+        self.new_solution, self.unassigned_tasks = self.operators.destroy(self.current_solution, self.unassigned_tasks, self.tasks, self.task_relatedness)
         self.new_solution, self.unassigned_tasks = self.operators.repair(self.new_solution, self.unassigned_tasks, self.technicians, self.tasks, self.distances, self.data, [self.shops, self.depots],self.weather)
         
 
@@ -2247,13 +2672,15 @@ class ALNS_ALgorithm:
         #while time.time() - start_time <= self.run_time:
         #    pass
         #return self.best_solution
-        for i in range(1):
+        for i in range(2):
             print("before 2nd print")
 
             self.selectOperators()
 
             
             print(self.unassigned_tasks)
+            if len(self.unassigned_tasks)== 0:
+                return False
             self.generateNewSolution()
 
             self.new_solution.updateCosts_Income(self.distances,self.tasks, self.unassigned_tasks)
