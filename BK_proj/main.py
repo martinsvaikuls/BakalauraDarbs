@@ -31,7 +31,7 @@ SHOP_COST_MULT = 1.2
 DEPOT_DURATION = datetime.timedelta(minutes=15)
 
 DEPOT_TEST = True
-SHOP_TEST = True
+SHOP_TEST = False
 WEATHER_TEST = True
 
 class Resource_Data:
@@ -489,9 +489,6 @@ class Distances:
 
 
 
-
-
-
 class Solution: 
     def __init__(self, technicians, tasks):
         self.tech_map = {t.master_id: t for t in technicians.values()}
@@ -790,7 +787,7 @@ class Solution:
             totalResourceCost += self.resourcesCost[tech_id]
         
 
-        self.totalMonetaryCost = totalPathCost + totalTimeCost + totalWeatherCost
+        self.totalMonetaryCost = totalPathCost + totalTimeCost 
         self.totalPathCost = totalPathCost
         self.totalTimeCost = totalTimeCost
 
@@ -804,7 +801,11 @@ class Solution:
 
         self.totalResourceCost = totalResourceCost
         
+
         self.weight = self.totalMonetaryCost - self.totalIncome + self.forgottenTaskCost
+
+        ### ! WEATHER
+        self.totalMonetaryCost += totalWeatherCost
 
 
     def __str__(self):
@@ -972,7 +973,7 @@ class Operators:
             self.chosen_destroy = 2
         self.chosen_destroy = 3
         #print(self.chosen_destroy)"""
-        self.chosen_destroy = 3
+        #self.chosen_destroy = 3
         print("destroyer: ", self.chosen_destroy)
         #if self.chosen_destroy == 1:
         #    self.chosen_destroy = 4
@@ -1034,12 +1035,15 @@ class Destroy_Operator:
         if not all_nodes:
             return new_solution, unassigned_tasks
         removed_nodes = random.sample(all_nodes, k)
+        copied_nodes = set()
         print()
         print()
 
         for tech_id, node in removed_nodes:
-            if not new_solution.changedRoute[tech_id]:
+            #if not new_solution.changedRoute[tech_id]:
+            if tech_id not in copied_nodes:
                 new_solution.routes[tech_id] = solution.routes[tech_id].copy()
+                copied_nodes.add(tech_id)
             if node.node_type != NodeType.TASK:
                 continue
             new_solution.routes[tech_id].remove(node)
@@ -1066,10 +1070,9 @@ class Destroy_Operator:
         copied_routes = set()
 
         for tech_id, route in removed_nodes:
-            
-            if not new_solution.changedRoute[tech_id]:
+            if tech_id not in copied_routes:
                 new_solution.routes[tech_id] = solution.routes[tech_id].copy()
-
+                copied_routes.add(tech_id)
         
             new_solution.routes[tech_id] = [node for node in route if node.node_type == NodeType.TECH]
 
@@ -1100,15 +1103,17 @@ class Destroy_Operator:
         if not all_nodes:
             return new_solution, unassigned_tasks
         expensive_tasks = [task_id for task_id, cost in sorted_costs[:k]]
-
+        copied_tasks = set()
 
         for tech_id, node in all_nodes:
             if node.id in expensive_tasks:
                 if node.node_type != NodeType.TASK:
                     continue
-                if not new_solution.changedRoute[tech_id]:
+                #if not new_solution.changedRoute[tech_id]:
+                if tech_id not in copied_tasks:
                     new_solution.routes[tech_id] = solution.routes[tech_id].copy()
-                
+                    copied_tasks.add(tech_id)
+
                 new_solution.routes[tech_id].remove(node)
                 unassigned_tasks.append(node)
 
@@ -1235,7 +1240,7 @@ class Destroy_Operator:
         k_tasks = int(max(1, len(all_nodes) * 0.05))
         
 
-
+        coped_tasks = set()
         for skill in chosen_skills:
             removed_task_count = 0
             for tech_id, node in all_nodes:
@@ -1245,9 +1250,11 @@ class Destroy_Operator:
                     break
                 current_task = tasks[node.id]
                 if skill in current_task.skills:
-                    if not new_solution.changedRoute[tech_id]:
+                    #if not new_solution.changedRoute[tech_id]:
+                    if tech_id not in coped_tasks:
                         new_solution.routes[tech_id] = solution.routes[tech_id].copy()
-                    
+                        coped_tasks.add(tech_id)
+
                     new_solution.routes[tech_id].remove(node)
                     unassigned_tasks.append(node)
 
@@ -1355,14 +1362,15 @@ class Repair_Operator:
 
             #print(travel)
             totatTravel += travel
-            ### ! WEATHER assign
-            cost_factor, slow_downFactor = distances.get_weather(current_tech_position, next_route_position, 
-                                    route[i].end_time, route[i].end_time+datetime.timedelta(minutes=travel),
-                                    weather)
-            
-            weatherExtraTime = travel * slow_downFactor - travel
-            weatherSafetyRiskKm = km * cost_factor
-            weatherCost = weatherExtraTime * (data.technician_workHourCost + data.drivingHourCost) + weatherSafetyRiskKm
+            if WEATHER_TEST:
+                ### ! WEATHER assign
+                cost_factor, slow_downFactor = distances.get_weather(current_tech_position, next_route_position, 
+                                        route[i].end_time, route[i].end_time+datetime.timedelta(minutes=travel),
+                                        weather)
+                
+                weatherExtraTime = travel * slow_downFactor - travel
+                weatherSafetyRiskKm = km * cost_factor
+                weatherCost = weatherExtraTime * (data.technician_workHourCost + data.drivingHourCost) + weatherSafetyRiskKm
                 #weatherCost += (travel*slow_downFactor-travel) * (data.technician_workHourCost + data.drivingHourCost + cost_factor) 
             
             totalTime += duration_workTask
@@ -1389,9 +1397,13 @@ class Repair_Operator:
             restock = restock
 
         resource_cost_total + restock + resources
+        totalMonetaryCost = + (totatTravel + totalTime)*data.workHourCost + totatTravel*data.drivingHourCost
+        if WEATHER_TEST:
+            totalMonetaryCost += weatherCost
 
 
-        totalMonetaryCost = weatherCost + (totatTravel + totalTime)*data.workHourCost + totatTravel*data.drivingHourCost 
+
+
 
         return totalMonetaryCost - income
 
@@ -3032,10 +3044,12 @@ class ALNS_ALgorithm:
         
 
     def acceptSimulatedAnnealingFunction(self): # ***
-        if self.new_solution.totalMonetaryCost < self.current_solution.totalMonetaryCost:
-            return True
+        
 
-        delta = self.new_solution.totalMonetaryCost - self.current_solution.totalMonetaryCost
+        delta = self.new_solution.weight - self.current_solution.weight
+        if delta <= 0:
+            return True
+    
         prob = min(1.0, math.exp(-delta / self.simulatedAnnealing_temperature))
         
         return random.random() < prob
