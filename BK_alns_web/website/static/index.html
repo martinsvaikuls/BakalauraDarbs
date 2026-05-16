@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ALNS System</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- LOGIN & REGISTER -->
+<div id="login-section">
+    <h2>Login</h2>
+    <input id="login-email" placeholder="Email"><br>
+    <input id="login-password" type="password" placeholder="Password"><br>
+    <button onclick="handleLogin()">Login</button>
+    <button onclick="showRegister()">Register</button>
+    <p id="login-msg" class="error"></p>
+</div>
+
+<div id="register-section" style="display:none;">
+    <h2>Register</h2>
+    <input id="register-name" placeholder="Your Name"><br>
+    <input id="register-email" placeholder="Email"><br>
+    <input id="register-password" type="password" placeholder="Password"><br>
+    <button onclick="handleRegister()">Register</button>
+    <button onclick="showLogin()">Back to Login</button>
+    <p id="register-msg" class="error"></p>
+</div>
+
+<!-- DASHBOARD -->
+<div id="app-section" style="display:none;">
+    <h2 id="welcome-msg"></h2>
+    <button onclick="runALNS()">Run Optimization</button>
+    <button onclick="logout()">Logout</button>
+    
+    <div id="iteration-label">Iteration: 0 / 0</div>
+    <div id="tasks-label">Tasks left in iteration: 0</div>
+    <div id="map"></div>
+
+    <div id="metrics-section">
+
+    <h3>Optimization Metrics</h3>
+
+    <!-- Top row -->
+    <div class="charts-row">
+
+        <div class="chart-box">
+            <h4>Objective Weight</h4>
+            <canvas id="weight-chart"></canvas>
+        </div>
+
+        <div class="chart-box">
+            <h4>Income vs Monetary Cost</h4>
+            <canvas id="income-chart"></canvas>
+        </div>
+
+    </div>
+
+    <!-- Middle row -->
+    <div class="charts-row">
+
+        <div class="chart-box">
+            <h4>Weather Impact</h4>
+            <canvas id="weather-chart"></canvas>
+        </div>
+
+        <div class="chart-box">
+            <h4>Shop vs Depot Costs</h4>
+            <canvas id="resource-chart"></canvas>
+        </div>
+
+    </div>
+
+    <!-- Bottom row -->
+    <div class="charts-row">
+
+        <div class="chart-box">
+            <h4>Forgotten Tasks</h4>
+            <canvas id="forgotten-chart"></canvas>
+        </div>
+
+
+    </div>
+
+    <div id="metrics-table"></div>
+
+</div>
+
+    <div id="objects-container2"></div>
+    <div id="section-routes"></div>
+    <div class="flex-row">
+
+        <!-- Technician Form -->
+        <div id="tech-form" class="flex-col form-section">
+            <h3>Create Technician</h3>
+            <div class="form-grid">
+                <!-- <div><label>id</label><input data-field="id" data-type="string" id="tech-id"></div> -->
+                <div><label>master id</label><input data-field="master_id" data-type="int" id="tech-master-id"></div>
+                <div><label>skills</label><input data-field="skills" data-type="json" id="tech-skills" placeholder='["electrical","repair"]'></div>
+                <div><label>resources</label><textarea data-field="resources" data-type="json" id="tech-resources" placeholder='{"ladder":1}'></textarea></div>
+                <div><label>start time window</label><input data-field="start_tw" data-type="string" id="tech-start" type="datetime-local"></div>
+                <div><label>end time window</label><input data-field="end_tw" data-type="string" id="tech-end" type="datetime-local"></div>
+                <div><label>home latitude</label><input data-field="home_lat" data-type="float" id="tech-lat" step="0.0001"></div>
+                <div><label>home longitude</label><input data-field="home_long" data-type="float" id="tech-long" step="0.0001"></div>
+            </div>
+            <button onclick="createObject('technicians', 'tech')">Create Technician</button>
+            <p id="tech-msg" class="error"></p>
+        </div>
+
+        <!-- Task Form -->
+        <div id="task-form" class="flex-col form-section">
+            <h3>Create Task</h3>
+            <div class="form-grid">
+                <!-- <div><label>id</label><input data-field="id" data-type="string" id="task-id"></div> -->
+                <div><label>priority</label><input data-field="priority" data-type="int" id="task-priority" type="number"></div>
+                <div><label>skills</label><input data-field="skills" data-type="json" id="task-skills" placeholder='["electrical"]'></div>
+                <div><label>duration</label><input data-field="duration" data-type="int" id="task-duration" type="number"></div>
+                <div><label>start time window</label><input data-field="start_tw" data-type="string" id="task-start" type="datetime-local"></div>
+                <div><label>end time window</label><input data-field="end_tw" data-type="string" id="task-end" type="datetime-local"></div>
+                <!-- <div><label>created</label><input data-field="created" data-type="string" id="task-created" type="datetime-local"></div> -->
+                <div><label>relevant_technician_ids</label><input data-field="relevant_technician_ids" data-type="json" id="task-techs" placeholder='[1,2]'></div>
+                <div><label>latitude</label><input data-field="lat" data-type="float" id="task-lat" step="0.0001"></div>
+                <div><label>longitude</label><input data-field="long" data-type="float" id="task-long" step="0.0001"></div>
+                <div><label>resources</label><textarea data-field="resources" data-type="json" id="task-resources" placeholder='{"tool":1}'></textarea></div>
+                <div><label>income</label><input data-field="income" data-type="float" id="task-income" step="0.01"></div>
+            </div>
+            <button onclick="createObject('tasks', 'tasks')">Create Task</button>
+            <p id="task-msg" class="error"></p>
+        </div>
+        <!-- Technician Form -->
+        <div id="depots-form" class="flex-col form-section">
+            <h3>Create Depot</h3>
+            <div class="form-grid">
+                <!-- <div><label>id</label><input data-field="id" data-type="string" id="tech-id"></div> -->
+                <div><label>start_tw</label><input data-field="start_tw" data-type="string" id="tech-start" type="datetime-local"></div>
+                <div><label>end_tw</label><input data-field="end_tw" data-type="string" id="tech-end" type="datetime-local"></div>
+                <div><label>latitude</label><input data-field="lat" data-type="float" id="task-lat" step="0.0001"></div>
+                <div><label>longitude</label><input data-field="long" data-type="float" id="task-long" step="0.0001"></div>
+            </div>
+            <button onclick="createObject('depots', 'depots')">Create Technician</button>
+            <p id="tech-msg" class="error"></p>
+        </div>
+        <!-- Technician Form -->
+        <div id="shop-form" class="flex-col form-section">
+            <h3>Create Shop</h3>
+            <div class="form-grid">
+                <!-- <div><label>id</label><input data-field="id" data-type="string" id="tech-id"></div> -->
+                <div><label>start_tw</label><input data-field="start_tw" data-type="string" id="tech-start" type="datetime-local"></div>
+                <div><label>end_tw</label><input data-field="end_tw" data-type="string" id="tech-end" type="datetime-local"></div>
+                <div><label>latitude</label><input data-field="lat" data-type="float" id="task-lat" step="0.0001"></div>
+                <div><label>longitude</label><input data-field="long" data-type="float" id="task-long" step="0.0001"></div>
+            </div>
+            <button onclick="createObject('shop', 'shop')">Create Technician</button>
+            <p id="tech-msg" class="error"></p>
+        </div>
+    </div>
+
+    <div id="objects-container"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="static.js"></script>
+
+</body>
+</html>
