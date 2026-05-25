@@ -15,9 +15,7 @@ const rowColorMap = {
 const radiusMap = { technicians: 4, tasks: 4, depots: 6, shops: 6 };
 const opacityMap = { technicians: 0.5, tasks: 0.8, depots: 0.9, shops: 0.9 };
 
-// --------------------
-// --- UI Functions ---
-// --------------------
+
 function toggleSection(showId) {
     const sections = ["login-section", "register-section", "app-section"];
     sections.forEach(id => document.getElementById(id).style.display = (id === showId ? "block" : "none"));
@@ -32,13 +30,11 @@ function showApp(user) {
     toggleSection("app-section");
     document.getElementById("welcome-msg").innerText = `Welcome!`;
     
-    initMap();  // must be first
+    initMap(); 
     loadAllObjects();
 }
 
-// --------------------
-// --- Auth Functions ---
-// --------------------
+
 async function authRequest(url, payload) {
     const res = await fetch(url, {
         method: "POST",
@@ -82,24 +78,22 @@ function logout() {
     toggleSection("login-section");
 }
 
-// --------------------
-// --- Map Functions ---
-// --------------------
+
 let lastMove = 0;
 
 function initMap() {
-    if (map) return; // prevent re-init
+    if (map) return; 
 
     map = L.map('map', {
         maxZoom: 18,
         minZoom: 3,
         zoomControl: true,
         fadeAnimation: false,
-        updateWhenIdle: true,   // tiles load only after panning/zooming stops
+        updateWhenIdle: true,   
         updateWhenZooming: false
     }).setView([56.9496, 24.1052], 10);
 
-    // OSM tiles (light usage, safe for demo)
+   
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors',
         subdomains: ['a', 'b', 'c'],
@@ -108,9 +102,7 @@ function initMap() {
     }).addTo(map);
 }
 
-// --------------------
-// --- Route Functions ---
-// --------------------
+
 let pollInterval = null;
 
 async function runALNS() {
@@ -121,7 +113,7 @@ async function runALNS() {
 
         polling = false;
 
-        // Clear previous routes
+
         if (window.routeLayers) {
 
             window.routeLayers.forEach(layer => {
@@ -131,7 +123,7 @@ async function runALNS() {
 
         window.routeLayers = [];
 
-        // Remove previous route tables
+      
         const oldSection =
             document.getElementById("section-routes");
 
@@ -178,10 +170,10 @@ async function pollRoutes() {
         const data = await res.json();
 
         document.getElementById("iteration-label").innerText =
-            `Iteration: ${data.iteration.current} / ${data.iteration.total}`;
+            `Iterācija: ${data.iteration.current} / ${data.iteration.total}`;
 
         document.getElementById("tasks-label").innerText =
-            `Tasks left in iteration: ${data.tasks.tasks}`;
+            `Atlikušais neapskatīto uzdevumu skaits : ${data.tasks.tasks}`;
 
         renderRoutes(data.routes);
 
@@ -228,31 +220,38 @@ function renderRoutes(routes) {
 
     routes.forEach(route => {
 
-        if (!route.coords || route.coords.length === 0) {
+        if (!route.geometry || route.geometry.length === 0) {
             return;
         }
 
-        const latlngs = route.coords
-            .map(p => [
-                parseFloat(p.lat),
-                parseFloat(p.long)
-            ])
-            .filter(p =>
-                !isNaN(p[0]) && !isNaN(p[1])
-            );
+        route.geometry.forEach(segment => {
 
-        if (latlngs.length === 0) {
-            return;
-        }
+            if (!segment.coordinates) {
+                return;
+            }
 
-        const polyline = L.polyline(latlngs, {
-            color: "blue",
-            opacity: 0.5,
-            weight: 3,
-            smoothFactor: 1
-        }).addTo(map);
+            const latlngs = segment.coordinates
+                .map(p => [
+                    parseFloat(p[1]),
+                    parseFloat(p[0])
+                ])
+                .filter(p =>
+                    !isNaN(p[0]) && !isNaN(p[1])
+                );
 
-        window.routeLayers.push(polyline);
+            if (latlngs.length === 0) {
+                return;
+            }
+
+            const polyline = L.polyline(latlngs, {
+                color: "blue",
+                opacity: 0.4,
+                weight: 3,
+                smoothFactor: 1
+            }).addTo(map);
+
+            window.routeLayers.push(polyline);
+        });
     });
 }
 
@@ -262,7 +261,6 @@ function renderRoutesList(routes) {
     const container =
         document.getElementById("objects-container2");
 
-    // Remove old section
     const oldSection =
         document.getElementById("section-routes");
 
@@ -270,7 +268,6 @@ function renderRoutesList(routes) {
         oldSection.remove();
     }
 
-    // Create new section
     const section = document.createElement("div");
 
     section.id = "section-routes";
@@ -285,17 +282,14 @@ function renderRoutesList(routes) {
 
         const routeDiv = document.createElement("div");
 
-        // Route title
         const title = document.createElement("h4");
 
         title.textContent = `Tech ID: ${route.tech_id}`;
 
         routeDiv.appendChild(title);
 
-        // Table
         const table = document.createElement("table");
 
-        // Header
         const thead = document.createElement("thead");
 
         const headerRow = document.createElement("tr");
@@ -314,14 +308,12 @@ function renderRoutesList(routes) {
 
         table.appendChild(thead);
 
-        // Body
         const tbody = document.createElement("tbody");
 
         route.coords.forEach(stop => {
 
             const tr = document.createElement("tr");
 
-            // Light row tint
             const type =
                 stop.type?.toLowerCase();
 
@@ -367,7 +359,7 @@ let weatherChart = null;
 let resourceChart = null;
 let forgottenChart = null;
 
-function createOrUpdateChart(chartRef, canvasId, datasets, labels) {
+function createOrUpdateChart(chartRef,canvasId,datasets,labels,xAxisTitle,yAxisTitle) {
 
     const ctx =
         document
@@ -414,8 +406,21 @@ function createOrUpdateChart(chartRef, canvasId, datasets, labels) {
 
                 scales: {
                     x: {
+
+                        title: {
+                            display: true,
+                            text: xAxisTitle
+                        },
+
                         ticks: {
                             maxTicksLimit: 10
+                        }
+                    },
+                    y: {
+
+                        title: {
+                            display: true,
+                            text: yAxisTitle
                         }
                     }
                 }
@@ -424,10 +429,21 @@ function createOrUpdateChart(chartRef, canvasId, datasets, labels) {
 
     } else {
 
-        chartRef.chart.data.labels = labels;
-        chartRef.chart.data.datasets = datasets;
-        chartRef.chart.update();
-    }
+    chartRef.chart.data.labels = labels;
+    chartRef.chart.data.datasets = datasets;
+
+    chartRef.chart.options.scales.x.title = {
+        display: true,
+        text: xAxisTitle
+    };
+
+    chartRef.chart.options.scales.y.title = {
+        display: true,
+        text: yAxisTitle
+    };
+
+    chartRef.chart.update();
+}
 }
 
 function updateCharts(metrics) {
@@ -436,16 +452,9 @@ function updateCharts(metrics) {
         return;
     }
 
-    // --------------------
-    // Labels
-    // --------------------
-
     const labels =
         metrics.map(m => m.iteration);
 
-    // --------------------
-    // Helper
-    // --------------------
 
     const safe =
         (value) => Number(value) || 0;
@@ -484,9 +493,7 @@ function updateCharts(metrics) {
     const forgottenCosts =
         metrics.map(m => safe(m.forgottenTaskCost));
 
-    // --------------------
-    // Weight Chart
-    // --------------------
+
 
     createOrUpdateChart(
 
@@ -496,12 +503,15 @@ function updateCharts(metrics) {
 
         [
             {
-                label: "Optimization Weight",
+                //label: "Optimizācijas vērtība",
+                label: "Mērķa vērtība",
                 data: weights
             }
         ],
 
-        labels
+        labels,
+        "Iterācija",
+        "Izmaksas"
     );
 
     weightChart =
@@ -509,9 +519,7 @@ function updateCharts(metrics) {
             ? weightChart
             : Chart.getChart("weight-chart");
 
-    // --------------------
-    // Income Chart
-    // --------------------
+
 
     createOrUpdateChart(
 
@@ -521,30 +529,32 @@ function updateCharts(metrics) {
 
         [
             {
-                label: "Income",
+                label: "Ieņēmumi",
                 data: incomes
             },
             {
-                label: "Monetary Cost",
+                label: "Maršruta izmaksas",
                 data: monetaryCosts
             },
             {
-                label: "Time Cost",
+                label: "Laika naudas izmaksas",
                 data: totalTimeCost
             },
             {
-                label: "Path Cost",
+                label: "Darbinieku braukšanas izmaksas",
                 data: totalPathCost
             },
             {
-                label: "Resource Cost",
+                label: "Resursu izmaksas",
                 data: totalResourceCost
             }
 
 
         ],
 
-        labels
+        labels,
+        "Iterācija",
+        "Izmaksas"
     );
 
     incomeChart =
@@ -552,9 +562,7 @@ function updateCharts(metrics) {
             ? incomeChart
             : Chart.getChart("income-chart");
 
-    // --------------------
-    // Weather Chart
-    // --------------------
+
 
     createOrUpdateChart(
 
@@ -564,12 +572,14 @@ function updateCharts(metrics) {
 
         [
             {
-                label: "Weather Cost",
+                label: "Laikapstākļu izmaksas",
                 data: weatherCosts
             }
         ],
 
-        labels
+        labels,
+        "Iterācija",
+        "Izmaksas"
     );
 
     weatherChart =
@@ -577,9 +587,7 @@ function updateCharts(metrics) {
             ? weatherChart
             : Chart.getChart("weather-chart");
 
-    // --------------------
-    // Resource Chart
-    // --------------------
+
 
     createOrUpdateChart(
 
@@ -589,17 +597,19 @@ function updateCharts(metrics) {
 
         [
             {
-                label: "Shop Cost",
+                label: "Veikalu izmaksas",
                 data: shopCosts
             },
             {
-                label: "Depot Cost",
+                label: "Noliktavu izmaksas",
                 data: depotCosts
             }
 
         ],
 
-        labels
+        labels,
+        "Iterācija",
+        "Izmaksas"
     );
 
     resourceChart =
@@ -607,9 +617,7 @@ function updateCharts(metrics) {
             ? resourceChart
             : Chart.getChart("resource-chart");
 
-    // --------------------
-    // Forgotten Tasks Chart
-    // --------------------
+
 
     createOrUpdateChart(
 
@@ -619,12 +627,14 @@ function updateCharts(metrics) {
 
         [
             {
-                label: "Unassigned Task Lost Penalty",
+                label: "Neieplānoto uzdevumu izmaksas",
                 data: forgottenCosts
             }
         ],
 
-        labels
+        labels,
+        "Iterācija",
+        "Izmaksas"
     );
 
     forgottenChart =
@@ -711,9 +721,6 @@ function renderMetrics(metrics) {
     container.appendChild(table);
 }
 
-// --------------------
-// --- Object Functions ---
-// --------------------
 
 
 async function fetchObjects(objectType) {
@@ -729,28 +736,101 @@ async function getNextId(objectType) {
     return numericIds.length ? Math.max(...numericIds) + 1 : 1;
 }
 
+function validateTimeWindow(start, end) {
+    const s = new Date(start), e = new Date(end);
+    const sh = s.getHours() + s.getMinutes() / 60;
+    const eh = e.getHours() + e.getMinutes() / 60;
+
+    if (sh < 7 || sh > 16) throw new Error("Start time must be between 07:00 and 16:00");
+    if (eh < 7 || eh > 16) throw new Error("End time must be between 07:00 and 16:00");
+    if (s > e) throw new Error("Start time cannot be later than end time");
+}
+
 async function createObject(objectType, formPrefix) {
+
     const token = localStorage.getItem("token");
+
     const inputs = document.querySelectorAll(`#${formPrefix}-form [data-field]`);
-    const payload = { id: (await getNextId(objectType)).toString() };
 
-    inputs.forEach(input => {
-        let val = input.value;
-        if (input.dataset.type === "json") val = JSON.parse(val || "{}");
-        else if (input.dataset.type === "float") val = parseFloat(val);
-        else if (input.dataset.type === "int") val = parseInt(val);
-        if (objectType === "tasks" && input.dataset.field === "created" && !val) val = new Date().toISOString();
-        payload[input.dataset.field] = val;
-    });
+    const payload = {
+        id: (await getNextId(objectType)).toString()
+    };
 
-    const res = await fetch(`/${objectType}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
-        body: JSON.stringify(payload)
-    });
-    const data = await res.json();
-    document.getElementById(`${formPrefix}-msg`).innerText = data.message || data.error;
-    loadObjectsAndRender(objectType);
+    try {
+
+        inputs.forEach(input => {
+
+            let val = input.value.trim();
+
+            switch (input.dataset.type) {
+
+                case "skills":
+                    val = val
+                        ? val.split(",").map(v => parseInt(v.trim())).filter(v => !isNaN(v))
+                        : [];
+                    break;
+
+                case "resources":
+                    val = val
+                        ? Object.fromEntries(
+                            val.split(",")
+                               .map(p => p.split(":").map(x => x.trim()))
+                               .filter(p => p.length === 2)
+                               .map(([k, v]) => [parseInt(k), parseInt(v)])
+                        )
+                        : {};
+                    break;
+
+                case "float":
+                    val = parseFloat(val);
+                    break;
+
+                case "int":
+                    val = parseInt(val);
+                    break;
+                    
+                case "array":
+                    val = val
+                        ? val.split(",").map(v => parseInt(v.trim())).filter(v => !isNaN(v))
+                        : [];
+                    break;
+            }
+
+            payload[input.dataset.field] = val;
+        });
+
+        if (
+            ["tasks", "technicians", "shops", "depots"].includes(objectType)
+            && payload.start_tw
+            && payload.end_tw
+        ) {
+            validateTimeWindow(payload.start_tw, payload.end_tw);
+        }
+        if (objectType === "tasks")
+            payload.created = new Date().toISOString()
+        
+        
+        const res = await fetch(`/objects/${objectType}`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + token
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+
+        document.getElementById(`${formPrefix}-msg`).innerText =
+            data.message || data.error || "Created";
+
+        loadObjectsAndRender(objectType);
+
+    } catch (err) {
+
+        document.getElementById(`${formPrefix}-msg`).innerText =
+            err.message;
+    }
 }
 
 async function loadObjectsAndRender(objectType) {
@@ -797,172 +877,269 @@ function generatePopup(obj, objectType) {
 function renderObjectsList(objects, objectType) {
     const container = document.getElementById("objects-container");
 
-    // Clear previous section
+    // Remove previous section
     const oldSection = document.getElementById(`section-${objectType}`);
     if (oldSection) oldSection.remove();
 
     const section = document.createElement("div");
     section.id = `section-${objectType}`;
     section.style.marginBottom = "20px";
-    section.innerHTML = `<h3>${objectType.charAt(0).toUpperCase() + objectType.slice(1)}</h3>`;
 
-    const formatCoord = (coord) => coord ? parseFloat(coord).toFixed(4) : "-";
+    // Title
+    const title = document.createElement("h3");
+    title.textContent =
+        objectType.charAt(0).toUpperCase() + objectType.slice(1);
 
+    section.appendChild(title);
+
+    const formatCoord = (coord) =>
+        coord !== undefined && coord !== null
+            ? parseFloat(coord).toFixed(4)
+            : "-";
+
+    const formatDate = (dt) =>
+        dt ? dt.replace("T", " ").slice(0, 16) : "-";
+
+    // =========================
+    // TECHNICIANS
+    // =========================
     if (objectType === "technicians") {
+
+        // Grid layout
+        const grid = document.createElement("div");
+        grid.style.display = "grid";
+        grid.style.gridTemplateColumns =
+            "repeat(auto-fit, minmax(500px, 1fr))";
+        grid.style.gap = "16px";
+
         // Group by master_id
         const grouped = {};
+
         objects.forEach(t => {
             const masterId = t.master_id || t.id;
-            if (!grouped[masterId]) grouped[masterId] = [];
+
+            if (!grouped[masterId]) {
+                grouped[masterId] = [];
+            }
+
             grouped[masterId].push(t);
         });
 
         Object.keys(grouped).forEach(masterId => {
+
             const instances = grouped[masterId];
             const first = instances[0];
 
             const masterDiv = document.createElement("div");
-            masterDiv.style.border = "1px solid #ccc";
-            masterDiv.style.padding = "10px";
-            masterDiv.style.marginBottom = "10px";
-            masterDiv.style.borderRadius = "6px";
 
-            // Header with master info
+            masterDiv.style.border = "1px solid #ccc";
+            masterDiv.style.borderRadius = "6px";
+            masterDiv.style.padding = "10px";
+            masterDiv.style.background = "#fff";
+
+            // Header
             const header = document.createElement("div");
             header.style.fontWeight = "bold";
-            header.style.marginBottom = "6px";
-            header.textContent = `Master ID: ${masterId}`;
+            header.style.fontSize = "16px";
+            header.style.marginBottom = "10px";
+            header.textContent = `Galvenais ID: ${masterId}`;
+
             masterDiv.appendChild(header);
 
+            // Master info
             const masterInfo = document.createElement("div");
+
             masterInfo.style.display = "flex";
+            masterInfo.style.flexWrap = "wrap";
             masterInfo.style.gap = "20px";
+            masterInfo.style.marginBottom = "10px";
 
             // Skills
             if (first.skills) {
                 const skillsDiv = document.createElement("div");
-                skillsDiv.textContent = `Skills: ${Array.isArray(first.skills) ? first.skills.join(", ") : JSON.stringify(first.skills)}`;
+
+                skillsDiv.innerHTML =
+                    `<strong>Prasmes:</strong> ${
+                        Array.isArray(first.skills)
+                            ? first.skills.join(", ")
+                            : JSON.stringify(first.skills)
+                    }`;
+
                 masterInfo.appendChild(skillsDiv);
             }
 
             // Location
-            const locDiv = document.createElement("div");
             const lat = formatCoord(first.home_lat ?? first.lat);
             const lng = formatCoord(first.home_long ?? first.long);
-            locDiv.textContent = `Location: ${lat}, ${lng}`;
+
+            const locDiv = document.createElement("div");
+
+            locDiv.innerHTML =
+                `<strong>Lokācija:</strong> ${lat}, ${lng}`;
+
             masterInfo.appendChild(locDiv);
 
             masterDiv.appendChild(masterInfo);
 
-            // Instances as table
+            // Table
             const table = document.createElement("table");
+
             table.style.width = "100%";
             table.style.borderCollapse = "collapse";
-            table.style.marginTop = "10px";
 
             const thead = document.createElement("thead");
             const headerRow = document.createElement("tr");
-            ["Instance ID", "Time Window", "Delete"].forEach(text => {
+
+            ["Laika loga ID", "Laika loga intervāls", "Dzēst"].forEach(text => {
+
                 const th = document.createElement("th");
+
                 th.textContent = text;
                 th.style.borderBottom = "1px solid #aaa";
                 th.style.textAlign = "left";
-                th.style.padding = "4px 8px";
+                th.style.padding = "6px 8px";
+
                 headerRow.appendChild(th);
             });
+
             thead.appendChild(headerRow);
             table.appendChild(thead);
 
             const tbody = document.createElement("tbody");
+
             instances.forEach(t => {
+
                 const tr = document.createElement("tr");
 
+                // ID
                 const tdId = document.createElement("td");
                 tdId.textContent = t.id;
-                tdId.style.padding = "4px 8px";
+                tdId.style.padding = "6px 8px";
+
                 tr.appendChild(tdId);
 
+                // Time window
                 const tdTW = document.createElement("td");
-                tdTW.textContent = t.start_tw && t.end_tw ? `${t.start_tw} - ${t.end_tw}` : "-";
-                tdTW.style.padding = "4px 8px";
+
+                tdTW.textContent =
+                    t.start_tw && t.end_tw
+                        ? `${formatDate(t.start_tw)} - ${formatDate(t.end_tw)}`
+                        : "-";
+
+                tdTW.style.padding = "6px 8px";
+
                 tr.appendChild(tdTW);
 
+                // Delete button
                 const tdBtn = document.createElement("td");
-                tdBtn.style.padding = "4px 8px";
+                tdBtn.style.padding = "6px 8px";
+
                 const btn = document.createElement("button");
-                btn.textContent = "Delete";
-                btn.onclick = () => deleteObject("technicians", t.id);
+
+                btn.textContent = "Dzēst";
+
+                btn.onclick = () =>
+                    deleteObject("technicians", t.id);
+
                 tdBtn.appendChild(btn);
+
                 tr.appendChild(tdBtn);
 
                 tbody.appendChild(tr);
             });
+
             table.appendChild(tbody);
+
             masterDiv.appendChild(table);
 
-            section.appendChild(masterDiv);
+            grid.appendChild(masterDiv);
         });
 
-    } else {
-        // Tasks, Shops, Depots
-        const table = document.createElement("table");
-        table.style.width = "100%";
-        table.style.borderCollapse = "collapse";
+        section.appendChild(grid);
 
-        const thead = document.createElement("thead");
-        const headerRow = document.createElement("tr");
+    }
 
-        // Columns
-        const columns = ["ID"];
-        if (objectType === "tasks") columns.push("Skills");
-        columns.push("Time Window", "Location", "Delete");  // Name removed
+    // =========================
+    // TASKS / SHOPS / DEPOTS
+    // =========================
+    else {
 
-        columns.forEach(text => {
-            const th = document.createElement("th");
-            th.textContent = text;
-            th.style.borderBottom = "1px solid #aaa";
-            th.style.textAlign = "left";
-            th.style.padding = "4px 8px";
-            headerRow.appendChild(th);
-        });
-        thead.appendChild(headerRow);
-        table.appendChild(thead);
+        const grid = document.createElement("div");
 
-        const tbody = document.createElement("tbody");
+        grid.style.display = "grid";
+        grid.style.gridTemplateColumns =
+            "repeat(auto-fit, minmax(400px, 1fr))";
+
+        grid.style.gap = "16px";
+
         objects.forEach(obj => {
-            const tr = document.createElement("tr");
 
-            const addTd = (value) => {
-                const td = document.createElement("td");
-                td.textContent = value || "-";
-                td.style.padding = "4px 8px";
-                return td;
+            const card = document.createElement("div");
+
+            card.style.border = "1px solid #ccc";
+            card.style.borderRadius = "6px";
+            card.style.padding = "10px";
+            card.style.background = "#fff";
+
+            // Helper row
+            const addRow = (label, value) => {
+
+                const row = document.createElement("div");
+
+                row.style.marginBottom = "8px";
+
+                row.innerHTML =
+                    `<strong>${label}:</strong> ${value || "-"}`;
+
+                card.appendChild(row);
             };
 
-            tr.appendChild(addTd(obj.id));
+            // ID
+            addRow("ID", obj.id);
 
+            // Skills
             if (objectType === "tasks") {
-                tr.appendChild(addTd(obj.skills ? (Array.isArray(obj.skills) ? obj.skills.join(", ") : JSON.stringify(obj.skills)) : "-"));
+
+                addRow(
+                    "Skills",
+                    obj.skills
+                        ? (
+                            Array.isArray(obj.skills)
+                                ? obj.skills.join(", ")
+                                : JSON.stringify(obj.skills)
+                        )
+                        : "-"
+                );
             }
 
-            tr.appendChild(addTd(obj.start_tw && obj.end_tw ? `${obj.start_tw} - ${obj.end_tw}` : "-"));
+            // Time window
+            addRow(
+                "Time Window",
+                obj.start_tw && obj.end_tw
+                    ? `${formatDate(obj.start_tw)} - ${formatDate(obj.end_tw)}`
+                    : "-"
+            );
 
+            // Location
             const lat = formatCoord(obj.home_lat ?? obj.lat);
             const lng = formatCoord(obj.home_long ?? obj.long);
-            tr.appendChild(addTd(`${lat}, ${lng}`));
 
-            const tdBtn = document.createElement("td");
+            addRow("Location", `${lat}, ${lng}`);
+
+            // Delete button
             const btn = document.createElement("button");
-            btn.textContent = "Delete";
-            btn.onclick = () => deleteObject(objectType, obj.id);
-            tdBtn.appendChild(btn);
-            tdBtn.style.padding = "4px 8px";
-            tr.appendChild(tdBtn);
 
-            tbody.appendChild(tr);
+            btn.textContent = "Delete";
+
+            btn.onclick = () =>
+                deleteObject(objectType, obj.id);
+
+            card.appendChild(btn);
+
+            grid.appendChild(card);
         });
-        table.appendChild(tbody);
-        section.appendChild(table);
+
+        section.appendChild(grid);
     }
 
     container.appendChild(section);
@@ -970,18 +1147,14 @@ function renderObjectsList(objects, objectType) {
 
 
 
-// --------------------
-// --- Load All Objects ---
-// --------------------
+
 async function loadAllObjects() {
     const container = document.getElementById("objects-container");
     container.innerHTML = "";
     for (let type of OBJECT_TYPES) await loadObjectsAndRender(type);
 }
 
-// --------------------
-// --- Delete Object ---
-// --------------------
+
 
 async function deleteObject(objectType, id) {
     if (!confirm(`Delete ${objectType} ${id}?`)) return;
@@ -1012,9 +1185,7 @@ async function deleteObject(objectType, id) {
 }
 
 
-// --------------------
-// --- Auto-login ---
-// --------------------
+
 document.addEventListener("DOMContentLoaded", () => {
     if (localStorage.getItem("token")) showApp({ client_name: "User" });
 });

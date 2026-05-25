@@ -39,8 +39,10 @@ button:hover {
 }
 
 #map {
-    height: 600px;
+    height: 800px;
     margin-top: 20px;
+    margin-left: 20px;
+    margin-right: 20px;
     border-radius: 12px;
     overflow: hidden;
     border: 1px solid #ccc;

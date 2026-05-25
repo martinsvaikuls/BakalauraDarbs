@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>ALNS System</title>
+<title>ALNS sistema</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 <link rel="stylesheet" href="style.css">
 </head>
@@ -10,7 +10,7 @@
 
 <!-- LOGIN & REGISTER -->
 <div id="login-section">
-    <h2>Login</h2>
+    <h2>Pieteikties</h2>
     <input id="login-email" placeholder="Email"><br>
     <input id="login-password" type="password" placeholder="Password"><br>
     <button onclick="handleLogin()">Login</button>
@@ -19,7 +19,7 @@
 </div>
 
 <div id="register-section" style="display:none;">
-    <h2>Register</h2>
+    <h2>Registreties</h2>
     <input id="register-name" placeholder="Your Name"><br>
     <input id="register-email" placeholder="Email"><br>
     <input id="register-password" type="password" placeholder="Password"><br>
@@ -31,52 +31,52 @@
 <!-- DASHBOARD -->
 <div id="app-section" style="display:none;">
     <h2 id="welcome-msg"></h2>
-    <button onclick="runALNS()">Run Optimization</button>
-    <button onclick="logout()">Logout</button>
+    <button onclick="runALNS()">Uzsākt optimizāciju</button>
+    <button onclick="logout()">Izrakstīties</button>
     
-    <div id="iteration-label">Iteration: 0 / 0</div>
-    <div id="tasks-label">Tasks left in iteration: 0</div>
+    <div id="iteration-label">Iterācija: 0 / 0</div>
+    <div id="tasks-label">Atlikušais neapskatīto uzdevumu skaits: 0</div>
     <div id="map"></div>
 
     <div id="metrics-section">
 
-    <h3>Optimization Metrics</h3>
+    <h3>Risinājuma dati</h3>
 
-    <!-- Top row -->
+
     <div class="charts-row">
 
         <div class="chart-box">
-            <h4>Objective Weight</h4>
+            <!--<h4 style="text-align:center;">Mērķā vērtība</h4>-->
             <canvas id="weight-chart"></canvas>
         </div>
 
         <div class="chart-box">
-            <h4>Income vs Monetary Cost</h4>
+            <!--<h4 style="text-align:center;">Ieņēmumi un izmaksas</h4>-->
             <canvas id="income-chart"></canvas>
         </div>
 
     </div>
 
-    <!-- Middle row -->
+   
     <div class="charts-row">
 
         <div class="chart-box">
-            <h4>Weather Impact</h4>
+            <!--<h4 style="text-align:center;">Laikapstākļu ietekme</h4>-->
             <canvas id="weather-chart"></canvas>
         </div>
 
         <div class="chart-box">
-            <h4>Shop vs Depot Costs</h4>
+            <!--<<h4 style="text-align:center;">Veikalu un noliktavu resursu izmaksas</h4>-->
             <canvas id="resource-chart"></canvas>
         </div>
 
     </div>
 
-    <!-- Bottom row -->
+
     <div class="charts-row">
 
         <div class="chart-box">
-            <h4>Forgotten Tasks</h4>
+            <!--<h4 style="text-align:center;">Neieplānoto uzdevumu sods</h4>-->
             <canvas id="forgotten-chart"></canvas>
         </div>
 
@@ -91,70 +91,68 @@
     <div id="section-routes"></div>
     <div class="flex-row">
 
-        <!-- Technician Form -->
-        <div id="tech-form" class="flex-col form-section">
-            <h3>Create Technician</h3>
-            <div class="form-grid">
-                <!-- <div><label>id</label><input data-field="id" data-type="string" id="tech-id"></div> -->
-                <div><label>master id</label><input data-field="master_id" data-type="int" id="tech-master-id"></div>
-                <div><label>skills</label><input data-field="skills" data-type="json" id="tech-skills" placeholder='["electrical","repair"]'></div>
-                <div><label>resources</label><textarea data-field="resources" data-type="json" id="tech-resources" placeholder='{"ladder":1}'></textarea></div>
-                <div><label>start time window</label><input data-field="start_tw" data-type="string" id="tech-start" type="datetime-local"></div>
-                <div><label>end time window</label><input data-field="end_tw" data-type="string" id="tech-end" type="datetime-local"></div>
-                <div><label>home latitude</label><input data-field="home_lat" data-type="float" id="tech-lat" step="0.0001"></div>
-                <div><label>home longitude</label><input data-field="home_long" data-type="float" id="tech-long" step="0.0001"></div>
-            </div>
-            <button onclick="createObject('technicians', 'tech')">Create Technician</button>
-            <p id="tech-msg" class="error"></p>
-        </div>
+    
 
-        <!-- Task Form -->
-        <div id="task-form" class="flex-col form-section">
-            <h3>Create Task</h3>
-            <div class="form-grid">
-                <!-- <div><label>id</label><input data-field="id" data-type="string" id="task-id"></div> -->
-                <div><label>priority</label><input data-field="priority" data-type="int" id="task-priority" type="number"></div>
-                <div><label>skills</label><input data-field="skills" data-type="json" id="task-skills" placeholder='["electrical"]'></div>
-                <div><label>duration</label><input data-field="duration" data-type="int" id="task-duration" type="number"></div>
-                <div><label>start time window</label><input data-field="start_tw" data-type="string" id="task-start" type="datetime-local"></div>
-                <div><label>end time window</label><input data-field="end_tw" data-type="string" id="task-end" type="datetime-local"></div>
-                <!-- <div><label>created</label><input data-field="created" data-type="string" id="task-created" type="datetime-local"></div> -->
-                <div><label>relevant_technician_ids</label><input data-field="relevant_technician_ids" data-type="json" id="task-techs" placeholder='[1,2]'></div>
-                <div><label>latitude</label><input data-field="lat" data-type="float" id="task-lat" step="0.0001"></div>
-                <div><label>longitude</label><input data-field="long" data-type="float" id="task-long" step="0.0001"></div>
-                <div><label>resources</label><textarea data-field="resources" data-type="json" id="task-resources" placeholder='{"tool":1}'></textarea></div>
-                <div><label>income</label><input data-field="income" data-type="float" id="task-income" step="0.01"></div>
-            </div>
-            <button onclick="createObject('tasks', 'tasks')">Create Task</button>
-            <p id="task-msg" class="error"></p>
+    <div id="tech-form" class="flex-col form-section">
+        <h3>Izveidot darbinieku</h3>
+        <div class="form-grid">
+            <div><label>galvenais id</label><input data-field="master_id" data-type="int" id="tech-master-id" type="number"></div>
+            <div><label>prasmes</label><input data-field="skills" data-type="skills" id="tech-skills" placeholder="1,2,7"></div>
+            <div><label>resursi</label><textarea data-field="resources" data-type="resources" id="tech-resources" placeholder="1:5,2:3"></textarea></div>
+            <div><label>maiņas sākums</label><input data-field="start_tw" data-type="string" id="tech-start" type="datetime-local"></div>
+            <div><label>maiņas beigas</label><input data-field="end_tw" data-type="string" id="tech-end" type="datetime-local"></div>
+            <div><label>platuma koordināte</label><input data-field="home_lat" data-type="float" id="tech-lat" type="number" step="0.0001"></div>
+            <div><label>garuma koordināte</label><input data-field="home_long" data-type="float" id="tech-long" type="number" step="0.0001"></div>
         </div>
-        <!-- Technician Form -->
-        <div id="depots-form" class="flex-col form-section">
-            <h3>Create Depot</h3>
-            <div class="form-grid">
-                <!-- <div><label>id</label><input data-field="id" data-type="string" id="tech-id"></div> -->
-                <div><label>start_tw</label><input data-field="start_tw" data-type="string" id="tech-start" type="datetime-local"></div>
-                <div><label>end_tw</label><input data-field="end_tw" data-type="string" id="tech-end" type="datetime-local"></div>
-                <div><label>latitude</label><input data-field="lat" data-type="float" id="task-lat" step="0.0001"></div>
-                <div><label>longitude</label><input data-field="long" data-type="float" id="task-long" step="0.0001"></div>
-            </div>
-            <button onclick="createObject('depots', 'depots')">Create Technician</button>
-            <p id="tech-msg" class="error"></p>
-        </div>
-        <!-- Technician Form -->
-        <div id="shop-form" class="flex-col form-section">
-            <h3>Create Shop</h3>
-            <div class="form-grid">
-                <!-- <div><label>id</label><input data-field="id" data-type="string" id="tech-id"></div> -->
-                <div><label>start_tw</label><input data-field="start_tw" data-type="string" id="tech-start" type="datetime-local"></div>
-                <div><label>end_tw</label><input data-field="end_tw" data-type="string" id="tech-end" type="datetime-local"></div>
-                <div><label>latitude</label><input data-field="lat" data-type="float" id="task-lat" step="0.0001"></div>
-                <div><label>longitude</label><input data-field="long" data-type="float" id="task-long" step="0.0001"></div>
-            </div>
-            <button onclick="createObject('shop', 'shop')">Create Technician</button>
-            <p id="tech-msg" class="error"></p>
-        </div>
+        <button onclick="createObject('technicians', 'tech')">Create Technician</button>
+        <p id="tech-msg" class="error"></p>
     </div>
+
+    <div id="task-form" class="flex-col form-section">
+        <h3>Izveidot uzdevumu</h3>
+        <div class="form-grid">
+            <div><label>prioritāte</label><input data-field="priority" data-type="int" id="task-priority" type="number"></div>
+            <div><label>prasmes</label><input data-field="skills" data-type="skills" id="task-skills" placeholder="1,2,7"></div>
+            <div><label>darba ilgums</label><input data-field="duration" data-type="int" id="task-duration" type="number"></div>
+            <div><label>sākuma laika logs</label><input data-field="start_tw" data-type="string" id="task-start" type="datetime-local"></div>
+            <div><label>beigu laika logs</label><input data-field="end_tw" data-type="string" id="task-end" type="datetime-local"></div>
+            <div><label>ieinteresētie darbinieki</label><input data-field="relevant_technician_ids" data-type="skills" id="task-techs" placeholder="1,2,5"></div>
+            <div><label>platuma koordināte</label><input data-field="lat" data-type="float" id="task-lat" type="number" step="0.0001"></div>
+            <div><label>garuma koordināte</label><input data-field="long" data-type="float" id="task-long" type="number" step="0.0001"></div>
+            <div><label>resursi</label><textarea data-field="resources" data-type="array" id="task-resources" placeholder="1,2,5"></textarea></textarea></div>
+            <div><label>ienākumi</label><input data-field="income" data-type="float" id="task-income" type="number" step="0.01"></div>
+        </div>
+        <button onclick="createObject('tasks', 'task')">Create Task</button>
+        <p id="task-msg" class="error"></p>
+    </div>
+
+    <div id="depots-form" class="flex-col form-section">
+        <h3>Izveidot noliktavu</h3>
+        <div class="form-grid">
+            <div><label>sākuma laika logs</label><input data-field="start_tw" data-type="string" id="depot-start" type="datetime-local"></div>
+            <div><label>beigu laika logs</label><input data-field="end_tw" data-type="string" id="depot-end" type="datetime-local"></div>
+            <div><label>platuma koordināte</label><input data-field="lat" data-type="float" id="depot-lat" type="number" step="0.0001"></div>
+            <div><label>garuma koordināte</label><input data-field="long" data-type="float" id="depot-long" type="number" step="0.0001"></div>
+        </div>
+        <button onclick="createObject('depots', 'depots')">Create Depot</button>
+        <p id="depots-msg" class="error"></p>
+    </div>
+
+    <div id="shop-form" class="flex-col form-section">
+        <h3>Izveidot veikalu</h3>
+        <div class="form-grid">
+            <div><label>sākuma laika logs</label><input data-field="start_tw" data-type="string" id="shop-start" type="datetime-local"></div>
+            <div><label>beigu laika logs</label><input data-field="end_tw" data-type="string" id="shop-end" type="datetime-local"></div>
+            <div><label>platuma koordināte</label><input data-field="lat" data-type="float" id="shop-lat" type="number" step="0.0001"></div>
+            <div><label>garuma koordināte</label><input data-field="long" data-type="float" id="shop-long" type="number" step="0.0001"></div>
+        </div>
+        <button onclick="createObject('shops', 'shop')">Create Shop</button>
+        <p id="shop-msg" class="error"></p>
+    </div>
+
+
+
+</div>
 
     <div id="objects-container"></div>
 </div>
