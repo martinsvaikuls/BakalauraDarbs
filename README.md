@@ -1,5 +1,9 @@
 programmas uzsākšanai termināli nepieciešams ievadīt "py -3.13 BK_proj/website/app.py"
 
+rindas 42-44:
+noliktavu faktors:  DEPOT_TEST = True 
+veikalu faktors: SHOP_TEST = True
+laikapstākļu faktors: WEATHER_TEST = True
 ALNS optimizācijas algoritms: https://github.com/martinsvaikuls/BakalauraDarbs/blob/main/BK_alns_web/website/routes/algorithm/alns.py
 
 # DATI
