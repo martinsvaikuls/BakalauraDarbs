@@ -10,6 +10,29 @@ laikapstākļu faktors: WEATHER_TEST = True
 
 ALNS optimizācijas algoritms: https://github.com/martinsvaikuls/BakalauraDarbs/blob/main/BK_alns_web/website/routes/algorithm/alns.py
 
+# EKSPERIMENTU DATI
+iteration - iterācijas
+
+totalMonetaryCost - kopējās izmaksas
+
+totalPathCost - ceļa izmaksas
+
+totalWeatherCost - kopējās laikapstāķļu izmaksas
+
+totalShopCost - resursu izmaksas no veikaliem
+
+totalDepotCost - resurus izmaksas no noliktavām
+
+totalIncome - ienākumi
+
+forgottenTaskCost - neieplanoto uzdevumu sods
+
+weight - mērķa vērtība
+
+time - laiks lai izpildītu iterāciju
+
+unassigned_tasks - neieplānoto uzdevumu skaits
+
 # DATI
 
 Lietoto datu kopu atsauces:
