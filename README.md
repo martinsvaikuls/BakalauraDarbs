@@ -1,5 +1,7 @@
 programmas uzsākšanai termināli nepieciešams ievadīt "py -3.13 BK_proj/website/app.py"
 
+ALNS optimizācijas algoritms: https://github.com/martinsvaikuls/BakalauraDarbs/blob/main/BK_alns_web/website/routes/algorithm/alns.py
+
 # DATI
 
 Lietoto datu kopu atsauces:
