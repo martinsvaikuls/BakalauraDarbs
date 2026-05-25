@@ -14,11 +14,13 @@ urls = {
     "depotFilePath": os.path.join(CSV_DIR, "depots.csv"),
     "distances":os.path.join(CSV_DIR, "distances_cache.csv"),
     "weather_cahce":os.path.join(CSV_DIR, "weather_cache.csv"),
-    "weather": r"",
-    "relatedness_cache": r"",
-    "iteration": "",
-    "data_collection": r"D",
-    "data_collection_curr": r"",
-    "data_collection_new": r""
+    "geometry_cahce":os.path.join(CSV_DIR, "geometry_cache.csv"),
+    "weather":os.path.join(CSV_DIR,"data.grib"),
+    "relatedness_cache": os.path.join(CSV_DIR,"relatedness_cache.csv"),
+    "iteration": os.path.join(CSV_DIR,"shop_Weather"),
+    "data_collection":os.path.join(CSV_DIR, "scenario100_data_best.csv"),
+    "data_collection_curr":os.path.join(CSV_DIR, "scenario100_data_curr.csv"),
+    "data_collection_new":os.path.join(CSV_DIR,"scenario100_data_new.csv"),
+
 
 }
