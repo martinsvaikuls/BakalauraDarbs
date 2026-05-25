@@ -2980,7 +2980,7 @@ class ALNS_ALgorithm:
         #random.seed(seed)
         self.seed = seed
         self.run_time = run_time
-        self.max_iterations = 10
+        self.max_iterations = 30
         self.max_tasks = 128
         self.unassigned_tasks_count = 0
         self.new_unassigned_tasks_count = 0
