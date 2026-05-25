@@ -1,7 +1,7 @@
 from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 
-from routes.technicians import bp as technicians_bp
+#from routes.technicians import bp as technicians_bp
 from routes.planning import bp as planning_bp
 #from routes.restocking_locations import bp as restocking_locations_bp
 from routes.clients import bp as clients_bp
@@ -43,7 +43,7 @@ def create_app() -> Flask:
     def index():
         return send_from_directory(app.static_folder, "index.html")
 
-    app.register_blueprint(technicians_bp)
+    #app.register_blueprint(technicians_bp)
     #app.register_blueprint(tasks_bp)
     app.register_blueprint(planning_bp)    
     #app.register_blueprint(restocking_locations_bp)
@@ -56,5 +56,5 @@ def create_app() -> Flask:
 app = create_app()
 
 if __name__ == "__main__":
-    # Only for local dev
-    app.run(debug=True)
+
+    app.run(debug=True, port=5001)
