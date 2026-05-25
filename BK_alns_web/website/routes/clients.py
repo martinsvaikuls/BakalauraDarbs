@@ -99,3 +99,4 @@ def list_clients():
     for client in clients:
         client.pop("hash_password", None)
     return jsonify(clients)
+    

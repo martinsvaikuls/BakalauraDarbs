@@ -3,6 +3,8 @@ from routes.algorithm.alns import ALNS_ALgorithm
 import csv, json, threading
 import os
 import traceback
+import sys
+csv.field_size_limit(sys.maxsize)
 bp = Blueprint("planning", __name__, url_prefix="/planning")
 
 ROUTES_FILE = "routes.csv"  # Your ALNS writes here
@@ -14,11 +16,13 @@ METRICS_FILE = "metrics.csv"
 ALNS_RUNNING = False
 
 def run_alns_background():
-
     global ALNS_RUNNING
 
-    try:
 
+   
+
+    try:
+        #for num in nums:
         algo = ALNS_ALgorithm()
         algo.initialize()
 
@@ -27,7 +31,6 @@ def run_alns_background():
         traceback.print_exc()
 
     finally:
-
         ALNS_RUNNING = False
 
 
@@ -77,11 +80,17 @@ def get_current_routes():
     try:
         with open(ROUTES_FILE) as f:
             reader = csv.DictReader(f)
+
             for row in reader:
+
+                route_data = json.loads(row["route"])
+
                 routes.append({
                     "tech_id": row["tech_id"],
-                    "coords": json.loads(row["route"])
+                    "coords": route_data["coords"],
+                    "geometry": route_data["geometry"]
                 })
+
     except FileNotFoundError:
         pass
 
